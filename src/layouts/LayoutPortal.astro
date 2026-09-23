@@ -1,0 +1,135 @@
+---
+// Layout del portal del socio
+// ------------
+// Cabecera propia con navegación del portal, sin el menú comercial del sitio
+// público. El middleware ya garantizó que hay sesión cuando se llega aquí.
+
+import Header from '../components/blocks/head/Header.astro'
+import MarcaImpulsa from '../components/ui/MarcaImpulsa.astro'
+import Scripts from '../components/scripts/ThemeScripts.astro'
+import { iniciales } from '../lib/auth'
+import '../styles/global.css'
+
+type Props = {
+	title?: string
+	description?: string
+	activo?: 'inicio' | 'creditos' | 'solicitudes' | 'ahorro' | 'documentos' | 'perfil'
+}
+
+const { title, description, activo = 'inicio' } = Astro.props
+const perfil = Astro.locals.perfil!
+
+const enlaces = [
+	{ id: 'inicio', nombre: 'Resumen', href: '/portal' },
+	{ id: 'creditos', nombre: 'Mis créditos', href: '/portal/creditos' },
+	{ id: 'solicitudes', nombre: 'Solicitudes', href: '/portal/solicitudes' },
+	{ id: 'ahorro', nombre: 'Ahorro', href: '/portal/ahorro' },
+	{ id: 'documentos', nombre: 'Documentos', href: '/portal/documentos' },
+	{ id: 'perfil', nombre: 'Mi perfil', href: '/portal/perfil' }
+] as const
+
+// Las notificaciones sin leer se cuentan en el layout para que el indicador
+// aparezca en todas las pantallas del portal.
+const { count: sinLeer } = await Astro.locals.supabase
+	.from('notificaciones')
+	.select('id', { count: 'exact', head: true })
+	.eq('perfil_id', perfil.id)
+	.eq('leida', false)
+---
+
+<!doctype html>
+<html lang="es-MX" class="mode-auto">
+	<Header title={title ?? 'Portal del socio | Cooperativa Impulsa'} description={description} noindex={true} />
+	<body class="bg-neutral-50! bg-none! dark:bg-neutral-950!">
+		<header
+			class="sticky top-0 z-30 border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+		>
+			<div class="container flex h-16 items-center justify-between gap-4">
+				<MarcaImpulsa tamano="sm" enlace="/portal" />
+
+				<div class="flex items-center gap-3">
+					<a
+						href="/portal/notificaciones"
+						class="relative flex size-9 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+						aria-label={`Notificaciones${sinLeer ? ` (${sinLeer} sin leer)` : ''}`}
+					>
+						<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8">
+							<path
+								d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+								stroke-linecap="round"
+								stroke-linejoin="round"></path>
+						</svg>
+						{
+							sinLeer ? (
+								<span class="bg-oro-400 absolute top-1 right-1 flex size-4 items-center justify-center rounded-full text-[0.6rem] font-bold text-neutral-950">
+									{sinLeer > 9 ? '9+' : sinLeer}
+								</span>
+							) : null
+						}
+					</a>
+
+					<div class="flex items-center gap-2.5">
+						<span
+							class="bg-primary-600 flex size-9 items-center justify-center rounded-full text-sm font-semibold text-white"
+							aria-hidden="true">{iniciales(perfil)}</span
+						>
+						<span class="hidden text-sm sm:block">
+							<span class="block leading-tight font-medium text-neutral-900 dark:text-neutral-100">
+								{perfil.nombre}
+							</span>
+							<span class="block text-xs text-neutral-500 dark:text-neutral-400">
+								{perfil.numero_socio ?? 'Expediente en trámite'}
+							</span>
+						</span>
+					</div>
+
+					<form method="POST" action="/api/auth/salir">
+						<button type="submit" class="btn btn--fantasma btn--sm bg-transparent!">Salir</button>
+					</form>
+				</div>
+			</div>
+
+			<nav aria-label="Secciones del portal" class="border-t border-neutral-100 dark:border-neutral-800">
+				<div class="container flex gap-1 overflow-x-auto">
+					{
+						enlaces.map((e) => (
+							<a
+								href={e.href}
+								aria-current={activo === e.id ? 'page' : undefined}
+								class:list={[
+									'border-b-2 px-3 py-3 text-sm whitespace-nowrap transition-colors',
+									activo === e.id
+										? 'border-primary-600 text-primary-700 dark:text-primary-300 font-medium'
+										: 'border-transparent text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+								]}
+							>
+								{e.nombre}
+							</a>
+						))
+					}
+				</div>
+			</nav>
+		</header>
+
+		<main class="container py-8">
+			<slot />
+		</main>
+
+		<footer class="container border-t border-neutral-200 py-6 dark:border-neutral-800">
+			<p class="small mb-0 text-center">
+				Cooperativa Impulsa · <a href="/">Sitio público</a> ·
+				<a href="/aviso-de-privacidad">Aviso de privacidad</a> ·
+				<a href="/contact">¿Necesitas ayuda?</a>
+			</p>
+		</footer>
+
+		<Scripts />
+	</body>
+</html>
+
+<style>
+	@reference '../styles/global.css';
+	main a:not(.btn) {
+		@apply text-primary-700 hover:text-primary-800 dark:text-primary-300;
+	}
+</style>

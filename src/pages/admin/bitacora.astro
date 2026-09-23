@@ -1,0 +1,202 @@
+---
+// Panel - Bitácora de auditoría
+// ------------
+// Registro inmutable de quién cambió qué y cuándo en las tablas sensibles.
+// Es de solo lectura incluso para administración: la escriben triggers.
+
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { alcanzaRol } from '../../lib/auth'
+import { fechaHora, tiempoRelativo } from '../../lib/formato'
+
+const { supabase, perfil } = Astro.locals
+
+// El middleware ya exigio que sea personal; aqui se acota al rol minimo
+// que esta seccion requiere. RLS lo reafirma en la base.
+if (!alcanzaRol(perfil!.rol, 'gerente')) return Astro.redirect('/admin')
+const params = Astro.url.searchParams
+
+const tabla = params.get('tabla') ?? ''
+const accion = params.get('accion') ?? ''
+const pagina = Math.max(1, Number(params.get('p') ?? 1))
+const POR_PAGINA = 50
+
+let consulta = supabase
+	.from('bitacora')
+	.select('*', { count: 'exact' })
+	.order('creado_en', { ascending: false })
+
+if (tabla) consulta = consulta.eq('tabla', tabla)
+if (accion) consulta = consulta.eq('accion', accion)
+
+const desde = (pagina - 1) * POR_PAGINA
+const { data: entradas, count } = await consulta.range(desde, desde + POR_PAGINA - 1)
+
+const paginas = Math.ceil((count ?? 0) / POR_PAGINA)
+
+const TABLAS = [
+	'socios',
+	'solicitudes_credito',
+	'creditos',
+	'pagos',
+	'perfiles',
+	'productos_credito',
+	'configuracion'
+]
+
+const ETIQUETA_ACCION: Record<string, string> = {
+	INSERT: 'Alta',
+	UPDATE: 'Cambio',
+	DELETE: 'Baja'
+}
+
+/** Devuelve los campos que realmente cambiaron entre el antes y el después. */
+function diferencias(antes: unknown, despues: unknown): string[] {
+	if (!antes || !despues || typeof antes !== 'object' || typeof despues !== 'object') return []
+
+	const a = antes as Record<string, unknown>
+	const d = despues as Record<string, unknown>
+
+	return Object.keys(d)
+		.filter((k) => k !== 'actualizado_en' && JSON.stringify(a[k]) !== JSON.stringify(d[k]))
+		.slice(0, 6)
+}
+
+function urlCon(cambios: Record<string, string>) {
+	const nueva = new URLSearchParams(params)
+	for (const [k, v] of Object.entries(cambios)) {
+		if (v) nueva.set(k, v)
+		else nueva.delete(k)
+	}
+	return `?${nueva.toString()}`
+}
+---
+
+<LayoutAdmin title="Bitácora | Panel Impulsa" activo="bitacora">
+	<div class="mb-6">
+		<h1 class="h2 mb-1">Bitácora de auditoría</h1>
+		<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+			{count ?? 0} movimiento(s) registrado(s).
+		</p>
+	</div>
+
+	<form method="GET" class="panel mb-6 flex flex-wrap items-end gap-4">
+		<div class="campo mb-0! w-56">
+			<label for="tabla">Tabla</label>
+			<select id="tabla" name="tabla">
+				<option value="">Todas</option>
+				{
+					TABLAS.map((t) => (
+						<option value={t} selected={tabla === t}>
+							{t}
+						</option>
+					))
+				}
+			</select>
+		</div>
+
+		<div class="campo mb-0! w-40">
+			<label for="accion">Acción</label>
+			<select id="accion" name="accion">
+				<option value="">Todas</option>
+				<option value="INSERT" selected={accion === 'INSERT'}>Alta</option>
+				<option value="UPDATE" selected={accion === 'UPDATE'}>Cambio</option>
+				<option value="DELETE" selected={accion === 'DELETE'}>Baja</option>
+			</select>
+		</div>
+
+		<button type="submit" class="btn btn--primario">Filtrar</button>
+		{(tabla || accion) && <a href="/admin/bitacora" class="btn btn--fantasma">Limpiar</a>}
+	</form>
+
+	<div class="panel">
+		{
+			entradas && entradas.length > 0 ? (
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Cuándo</th>
+								<th>Quién</th>
+								<th>Acción</th>
+								<th>Tabla</th>
+								<th>Registro</th>
+								<th>Campos modificados</th>
+							</tr>
+						</thead>
+						<tbody>
+							{entradas.map((e) => {
+								const cambios = diferencias(e.datos_antes, e.datos_despues)
+								return (
+									<tr>
+										<td class="text-xs whitespace-nowrap">
+											{fechaHora(e.creado_en)}
+											<span class="block text-neutral-500">{tiempoRelativo(e.creado_en)}</span>
+										</td>
+										<td class="text-xs">{e.actor_correo ?? 'Sistema'}</td>
+										<td>
+											<span
+												class:list={[
+													'estado',
+													e.accion === 'DELETE'
+														? 'estado--rechazado'
+														: e.accion === 'INSERT'
+															? 'estado--aprobado'
+															: 'estado--pendiente'
+												]}
+											>
+												{ETIQUETA_ACCION[e.accion] ?? e.accion}
+											</span>
+										</td>
+										<td class="font-mono text-xs">{e.tabla}</td>
+										<td class="font-mono text-[0.65rem] text-neutral-500">
+											{e.registro_id?.slice(0, 8) ?? '—'}
+										</td>
+										<td class="text-xs">
+											{cambios.length > 0 ? (
+												cambios.map((c) => (
+													<code class="mr-1 inline-block rounded-sm bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-800">
+														{c}
+													</code>
+												))
+											) : (
+												<span class="text-neutral-400">—</span>
+											)}
+										</td>
+									</tr>
+								)
+							})}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<p class="mb-0 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+					No hay movimientos que coincidan con los filtros.
+				</p>
+			)
+		}
+
+		{
+			paginas > 1 && (
+				<nav class="mt-5 flex items-center justify-between gap-4" aria-label="Paginación">
+					<span class="text-sm text-neutral-500 dark:text-neutral-400">
+						Página {pagina} de {paginas}
+					</span>
+					<div class="flex gap-2">
+						{pagina > 1 && (
+							<a href={urlCon({ p: String(pagina - 1) })} class="btn btn--contorno btn--sm">
+								← Anterior
+							</a>
+						)}
+						{pagina < paginas && (
+							<a href={urlCon({ p: String(pagina + 1) })} class="btn btn--contorno btn--sm">
+								Siguiente →
+							</a>
+						)}
+					</div>
+				</nav>
+			)
+		}
+	</div>
+</LayoutAdmin>

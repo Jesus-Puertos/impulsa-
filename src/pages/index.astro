@@ -1,76 +1,364 @@
 ---
-// Home Page
+// Portada
 // ------------
-// Description: The home page is a page that displays the most important information.
+// SSR para que los productos, testimonios y avisos vengan del CMS. Si Supabase
+// no responde, la página sigue mostrando el contenido fijo: una portada rota
+// por una consulta caída sería peor que una sin testimonios.
 
-// Components
-// - Layout
+export const prerender = false
+
 import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import Button from '../components/ui/Button.astro'
+import MarcaImpulsa from '../components/ui/MarcaImpulsa.astro'
+import AvisoSitio from '../components/impulsa/AvisoSitio.astro'
+import CarruselProductos from '../components/impulsa/CarruselProductos.astro'
+import { clienteServidor } from '../lib/supabase/server'
+import { pesos, porcentaje, fecha } from '../lib/formato'
+import { ETIQUETAS_PERIODO } from '../lib/credito'
 
-// - Blocks
-import Hero from '../components/blocks/hero/CenteredHeroCTA.astro'
-import Brand from '../components/blocks/brand/Marquee.astro'
-import Features from '../components/blocks/features/MasonryGrid.astro'
-import ScrollSpySteps from '../components/blocks/onboarding/Steps.astro'
-import TestimonialMasonry from '../components/blocks/testimonials/TestimonialMasonry.astro'
-import Faq from '../components/blocks/faq/StickyFaq.astro'
-import CTA from '../components/blocks/cta/CTAPrimary.astro'
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
 
-// Content
-// - SEO
+const [{ data: productos }, { data: testimonios }, { data: entradas }, { data: ahorro }] =
+	await Promise.all([
+		// El carrusel de la portada los muestra todos; la cuadrícula de abajo se
+		// queda con los primeros cuatro para no romper su composición.
+		supabase.from('productos_credito').select('*').eq('activo', true).order('orden').limit(8),
+		supabase.from('testimonios').select('*').eq('estado', 'publicado').order('orden').limit(3),
+		supabase
+			.from('entradas_blog')
+			.select('slug, titulo, resumen, categoria, publicado_en, minutos_lectura')
+			.eq('estado', 'publicado')
+			.order('publicado_en', { ascending: false })
+			.limit(3),
+		supabase.from('productos_ahorro').select('*').eq('activo', true).order('orden').limit(3)
+	])
+
 const SEO = {
-	title:
-		'Mizu Light Astro Theme | Modern SaaS & Startup Landing Page Template for Fast Product Launches by Oxygenna',
+	title: 'Cooperativa Impulsa | Crédito responsable, ahorro e inclusión financiera',
 	description:
-		'Launch your next big idea with Mizu Light — a sleek, responsive Astro theme built for SaaS startups and tech companies. Streamline onboarding, showcase features beautifully, and convert visitors into users faster.'
+		'Somos una cooperativa que promueve el cooperativismo y la educación financiera. Crédito responsable, inversiones éticas y ahorro accesible para fortalecer a nuestras comunidades.'
 }
-// - Hero data
-const heroData = {
-	title: 'Launch smarter Start faster',
-	subtitle: 'build for the future',
-	buttonLink: '/pricing',
-	buttonText: 'Try it for free!',
-	text: 'Let AI handle the heavy lifting — from data insights to launch strategies — so you can focus on creating products that customers love'
-}
-// - Brand data
-const brandData = {
-	title: 'Built in collaboration with'
-}
-// - Testimonial data
-const testimonialData = {
-	title: 'Loved by early adopters everywhere',
-	subtitle: 'What other are saying'
-}
-// - FAQ data
-const faqData = {
-	title: 'Frequently Asked Questions',
-	subtitle: 'Everything you need to know'
-}
-// - CTA data
-const ctaData = {
-	title: 'Launch your next big idea today',
-	text: 'Join creators, teams, and startups already turning their ideas into reality. Get started in minutes and see how simple launching can be when everything works together seamlessly.',
-	buttonLink: '/pricing',
-	buttonText: 'Try it for free!'
-}
+
+const PASOS = [
+	{
+		numero: '01',
+		titulo: 'Simula sin compromiso',
+		texto:
+			'Calcula tu pago, los intereses y el CAT antes de decidir. Sin registrarte y sin que nadie te llame.'
+	},
+	{
+		numero: '02',
+		titulo: 'Hazte socio en línea',
+		texto:
+			'Captura tus datos y sube tu INE desde el celular. Toma unos 15 minutos y guardamos tu avance.'
+	},
+	{
+		numero: '03',
+		titulo: 'Recibe tu dictamen',
+		texto:
+			'Un analista revisa tu expediente y te responde en 3 a 5 días hábiles. Siempre te explicamos el porqué.'
+	},
+	{
+		numero: '04',
+		titulo: 'Da seguimiento desde tu portal',
+		texto:
+			'Consulta tu tabla de pagos, tus abonos aplicados y tu próxima fecha de vencimiento cuando quieras.'
+	}
+]
+
+const VALORES = [
+	{
+		titulo: 'Un socio, un voto',
+		texto:
+			'No eres cliente: eres copropietario. Tienes voz y voto en la Asamblea General sin importar cuánto hayas aportado.'
+	},
+	{
+		titulo: 'Sin letras chiquitas',
+		texto:
+			'Te entregamos tu tabla de amortización completa antes de firmar. Cada peso de comisión tiene nombre y motivo.'
+	},
+	{
+		titulo: 'Intereses sobre saldos insolutos',
+		texto:
+			'Pagas interés solo sobre lo que realmente debes. Adelantar pagos te ahorra dinero y no cobramos penalización.'
+	},
+	{
+		titulo: 'Educación financiera primero',
+		texto:
+			'Antes de venderte un crédito preferimos que entiendas si te conviene. Por eso publicamos y enseñamos.'
+	}
+]
 ---
 
 <Layout title={SEO.title} description={SEO.description}>
-	<Hero
-		title={heroData.title}
-		subtitle={heroData.subtitle}
-		buttonLink={heroData.buttonLink}
-		buttonText={heroData.buttonText}
-	/>
-	<Brand title={brandData.title} />
-	<Features />
-	<ScrollSpySteps />
-	<TestimonialMasonry title={testimonialData.title} subtitle={testimonialData.subtitle} />
-	<Faq subtitle={faqData.subtitle} title={faqData.title} />
-	<CTA
-		title={ctaData.title}
-		text={ctaData.text}
-		buttonLink={ctaData.buttonLink}
-		buttonText={ctaData.buttonText}
-	/>
+	<AvisoSitio />
+
+	{/* ------------------------------------------------------------- Portada */}
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row style="transparent" decorationBorder="none">
+			<Col span="7" classes="py-16 lg:py-28" style="transparent">
+				{/* La marca es `inline-flex`; sin este bloque el rótulo siguiente se le sube al lado. */}
+				<div class="mb-8">
+					<MarcaImpulsa tamano="xl" enlace={null} />
+				</div>
+				<span class="h5">Cooperativa de ahorro y crédito</span>
+				<h1>Tu futuro se construye <strong class="text-primary-600">en comunidad</strong></h1>
+				<p class="text-lead">
+					Promovemos el cooperativismo y la educación financiera con crédito responsable,
+					inversiones éticas y ahorro accesible. Para que cada socio construya su futuro sin
+					letras chiquitas.
+				</p>
+				<div class="mt-8 flex flex-wrap gap-3">
+					<Button link="/simulador" size="lg">Simular mi crédito</Button>
+					<Button link="/registro" size="lg" style="neutral">Hazte socio</Button>
+				</div>
+				<p class="small mt-6">
+					Simular no te compromete a nada y no requiere que dejes tus datos.
+				</p>
+			</Col>
+
+			{/*
+				`no-scroll-animation` no es cosmético: la animación de entrada del tema
+				deja el `.col` con `filter: blur(0px)` y un `transform`. Un filtro activo
+				obliga a compositar todo el subárbol, y eso rompe el repintado de las
+				diapositivas que Swiper desplaza con translate3d: la tarjeta entrante
+				se queda en blanco.
+			*/}
+			<Col
+				span="5"
+				classes="no-scroll-animation flex items-center pb-16 lg:py-28"
+				style="transparent"
+			>
+				{productos && productos.length > 0 && <CarruselProductos productos={productos} />}
+			</Col>
+		</Row>
+	</Section>
+
+	{/* ------------------------------------------------------ Productos */}
+	{
+		productos && productos.length > 0 && (
+			<Section decorationBorder="bottom">
+				<Row classes="pt-16">
+					<Col span="7" style="transparent">
+						<span class="h5">Créditos</span>
+						<h2>Financiamiento hecho a la medida de la región</h2>
+					</Col>
+					<Col span="4" start="9" classes="flex items-end pb-6" style="transparent">
+						<p class="mb-0">
+							Cada producto tiene condiciones distintas porque no es lo mismo financiar una
+							cosecha que una emergencia médica.
+						</p>
+					</Col>
+				</Row>
+
+				<Row classes="pb-16" style="transparent" decorationBorder="none">
+					{productos.slice(0, 4).map((p) => (
+						<Col span="3" spanTablet="6" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+							<h3 class="mb-2 text-lg">{p.nombre}</h3>
+							<p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{p.descripcion}</p>
+
+							<dl class="mb-5 space-y-1.5 text-sm">
+								<div class="flex justify-between gap-2">
+									<dt class="text-neutral-500">Monto</dt>
+									<dd class="text-right tabular-nums">
+										{pesos(p.monto_minimo)} — {pesos(p.monto_maximo)}
+									</dd>
+								</div>
+								<div class="flex justify-between gap-2">
+									<dt class="text-neutral-500">Plazo</dt>
+									<dd class="tabular-nums">
+										{p.plazo_minimo_periodos}-{p.plazo_maximo_periodos}{' '}
+										{ETIQUETAS_PERIODO[p.periodicidad]}
+									</dd>
+								</div>
+								<div class="flex justify-between gap-2">
+									<dt class="text-neutral-500">Tasa anual</dt>
+									<dd class="text-primary-700 dark:text-primary-300 font-semibold tabular-nums">
+										{porcentaje(p.tasa_anual)}
+									</dd>
+								</div>
+							</dl>
+
+							<a href={`/simulador?producto=${p.clave}`} class="btn btn--contorno btn--sm w-full">
+								Simular
+							</a>
+						</Col>
+					))}
+				</Row>
+
+				<Row style="transparent" decorationBorder="none">
+					<Col span="12" align="center" classes="pb-16" style="transparent">
+						<Button link="/creditos" style="neutral">Ver todos los créditos y sus requisitos</Button>
+					</Col>
+				</Row>
+			</Section>
+		)
+	}
+
+	{/* ------------------------------------------------------ Cómo funciona */}
+	<Section decorationBorder="bottom">
+		<Row classes="pt-16">
+			<Col span="8" style="transparent">
+				<span class="h5">Cómo funciona</span>
+				<h2>De la duda al crédito en cuatro pasos</h2>
+			</Col>
+		</Row>
+
+		<Row classes="pb-16" style="transparent" decorationBorder="none">
+			{
+				PASOS.map((paso) => (
+					<Col span="3" spanTablet="6" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+						<span class="font-display text-primary-300 dark:text-primary-700 block text-4xl leading-none">
+							{paso.numero}
+						</span>
+						<h3 class="mt-4 mb-2 text-lg">{paso.titulo}</h3>
+						<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">{paso.texto}</p>
+					</Col>
+				))
+			}
+		</Row>
+	</Section>
+
+	{/* ------------------------------------------------------ Ahorro */}
+	{
+		ahorro && ahorro.length > 0 && (
+			<Section decorationBorder="bottom">
+				<Row classes="py-16">
+					<Col span="5" style="transparent">
+						<span class="h5">Ahorro e inversión</span>
+						<h2>Tu dinero también trabaja aquí</h2>
+						<p>
+							El ahorro de los socios es lo que financia los créditos de otros socios. Por eso los
+							rendimientos se quedan en la comunidad y no en un accionista externo.
+						</p>
+						<Button link="/ahorro" style="neutral">Conocer los instrumentos</Button>
+					</Col>
+
+					<Col span="6" start="7" style="transparent">
+						<div class="space-y-4">
+							{ahorro.map((p) => (
+								<div class="panel flex items-center justify-between gap-4">
+									<div>
+										<h3 class="mb-1 text-base">{p.nombre}</h3>
+										<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+											Desde {pesos(p.monto_minimo_apertura)}
+											{p.plazo_dias ? ` · ${p.plazo_dias} días` : ' · Sin plazo forzoso'}
+										</p>
+									</div>
+									<div class="text-right">
+										<span class="font-display text-campo-600 dark:text-campo-400 block text-2xl leading-none">
+											{porcentaje(p.tasa_anual)}
+										</span>
+										<span class="text-xs text-neutral-500">anual</span>
+									</div>
+								</div>
+							))}
+						</div>
+					</Col>
+				</Row>
+			</Section>
+		)
+	}
+
+	{/* ------------------------------------------------------ Valores */}
+	<Section decorationBorder="bottom">
+		<Row classes="pt-16">
+			<Col span="8" style="transparent">
+				<span class="h5">Por qué una cooperativa</span>
+				<h2>En un banco eres cliente. Aquí eres dueño.</h2>
+			</Col>
+		</Row>
+
+		<Row classes="pb-16" style="transparent" decorationBorder="none">
+			{
+				VALORES.map((v) => (
+					<Col span="6" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+						<h3 class="mb-2 text-lg">{v.titulo}</h3>
+						<p class="mb-0 text-neutral-500 dark:text-neutral-400">{v.texto}</p>
+					</Col>
+				))
+			}
+		</Row>
+	</Section>
+
+	{/* ------------------------------------------------------ Testimonios */}
+	{
+		testimonios && testimonios.length > 0 && (
+			<Section decorationBorder="bottom">
+				<Row classes="pt-16">
+					<Col span="8" style="transparent">
+						<span class="h5">Nuestros socios</span>
+						<h2>Historias que sostienen la cooperativa</h2>
+					</Col>
+				</Row>
+
+				<Row classes="pb-16" style="transparent" decorationBorder="none">
+					{testimonios.map((t) => (
+						<Col span="4" spanTablet="6" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+							<blockquote class="text-lg! leading-8! mb-5">«{t.texto}»</blockquote>
+							<footer class="border-t border-dashed border-neutral-200 pt-4 dark:border-neutral-700">
+								<strong class="block">{t.nombre}</strong>
+								<span class="text-sm text-neutral-500 dark:text-neutral-400">{t.cargo}</span>
+							</footer>
+						</Col>
+					))}
+				</Row>
+			</Section>
+		)
+	}
+
+	{/* ------------------------------------------------------ Blog */}
+	{
+		entradas && entradas.length > 0 && (
+			<Section decorationBorder="bottom">
+				<Row classes="pt-16">
+					<Col span="7" style="transparent">
+						<span class="h5">Educación financiera</span>
+						<h2>Aprende antes de firmar</h2>
+					</Col>
+					<Col span="3" start="10" classes="flex items-end pb-6" style="transparent">
+						<a href="/blog">Ver todos los artículos →</a>
+					</Col>
+				</Row>
+
+				<Row classes="pb-16" style="transparent" decorationBorder="none">
+					{entradas.map((e) => (
+						<Col span="4" spanTablet="6" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+							<span class="h5">{e.categoria}</span>
+							<h3 class="mt-3 mb-2 text-lg">
+								<a href={`/blog/${e.slug}`} class="text-neutral-950! hover:text-primary-700! dark:text-white! no-underline">
+									{e.titulo}
+								</a>
+							</h3>
+							<p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{e.resumen}</p>
+							<p class="small mb-0">
+								{fecha(e.publicado_en)}
+								{e.minutos_lectura && ` · ${e.minutos_lectura} min de lectura`}
+							</p>
+						</Col>
+					))}
+				</Row>
+			</Section>
+		)
+	}
+
+	{/* ------------------------------------------------------ Cierre */}
+	<Section spacerBottom={false}>
+		<Row classes="py-20" style="transparent">
+			<Col span="8" start="3" align="center" style="transparent">
+				<h2>¿Empezamos?</h2>
+				<p class="text-lead">
+					Simula tu crédito sin compromiso o registra tu expediente hoy mismo. Si prefieres que te
+					expliquemos en persona, visita cualquiera de nuestras sucursales.
+				</p>
+				<div class="mt-8 flex flex-wrap justify-center gap-3">
+					<Button link="/simulador" size="lg">Ir al simulador</Button>
+					<Button link="/sucursales" size="lg" style="neutral">Ver sucursales</Button>
+				</div>
+			</Col>
+		</Row>
+	</Section>
 </Layout>

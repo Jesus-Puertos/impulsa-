@@ -1,0 +1,170 @@
+---
+// Quiénes somos
+// ------------
+// Los textos de misión y visión provienen del manual de identidad corporativa
+// (introducción). Si el Consejo los actualiza, edítalos aquí.
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import Button from '../components/ui/Button.astro'
+
+const PRINCIPIOS = [
+	{
+		titulo: 'Membresía abierta y voluntaria',
+		texto:
+			'Cualquier persona mayor de edad que acepte las responsabilidades de ser socio puede ingresar, sin discriminación de ningún tipo.'
+	},
+	{
+		titulo: 'Control democrático',
+		texto:
+			'Las decisiones se toman en Asamblea General. Cada socio tiene un voto, sin importar el monto de su aportación.'
+	},
+	{
+		titulo: 'Participación económica',
+		texto:
+			'Los socios aportan al capital social y participan de los excedentes. El patrimonio de la cooperativa es de quienes la integran.'
+	},
+	{
+		titulo: 'Autonomía e independencia',
+		texto:
+			'Somos una organización autónoma controlada por sus socios, sin subordinación a intereses externos.'
+	},
+	{
+		titulo: 'Educación y formación',
+		texto:
+			'Invertimos en educación financiera porque un socio informado toma mejores decisiones y fortalece a toda la cooperativa.'
+	},
+	{
+		titulo: 'Compromiso con la comunidad',
+		texto:
+			'Trabajamos por el desarrollo sostenible de las comunidades rurales donde operamos, fortaleciendo la economía local.'
+	}
+]
+---
+
+<Layout
+	title="Quiénes somos | Cooperativa Impulsa"
+	description="Somos una cooperativa dedicada a promover el cooperativismo y la inclusión financiera con crédito responsable, inversiones éticas y ahorro accesible."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="9" classes="py-16 lg:py-24">
+				<span class="h5">Quiénes somos</span>
+				<h1>Una institución de líderes en la promoción del cooperativismo</h1>
+				<p class="text-lead">
+					Nos dedicamos a promover el cooperativismo y la inclusión financiera brindando
+					soluciones de crédito responsable, inversiones éticas y ahorros accesibles.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	{/* Misión y visión */}
+	<Section decorationBorder="bottom">
+		<Row classes="py-16">
+			<Col span="6" classes="p-8 border border-neutral-200 dark:border-neutral-800">
+				<span class="h5">Nuestra misión</span>
+				<p class="text-lead mb-0">
+					Empoderar a nuestras comunidades y socios a través de servicios financieros justos y
+					sostenibles, fortaleciendo la economía local y el bienestar.
+				</p>
+			</Col>
+			<Col span="6" classes="p-8 border border-neutral-200 dark:border-neutral-800">
+				<span class="h5">Nuestra visión</span>
+				<p class="text-lead mb-0">
+					Un mundo en el que cada individuo tenga acceso a servicios financieros responsables y
+					justos, fortaleciendo comunidades rurales y fomentando la equidad económica.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	{/* Principios */}
+	<Section decorationBorder="bottom">
+		<Row classes="pt-16">
+			<Col span="8" style="transparent">
+				<span class="h5">Cómo trabajamos</span>
+				<h2>Los principios cooperativos que nos rigen</h2>
+				<p>
+					No son un adorno del acta constitutiva: definen cómo se toman las decisiones, a quién
+					pertenecen los excedentes y qué hacemos cuando un socio tiene problemas para pagar.
+				</p>
+			</Col>
+		</Row>
+
+		<Row classes="pb-16" style="transparent" decorationBorder="none">
+			{
+				PRINCIPIOS.map((p) => (
+					<Col span="4" spanTablet="6" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+						<h3 class="mb-2 text-lg">{p.titulo}</h3>
+						<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">{p.texto}</p>
+					</Col>
+				))
+			}
+		</Row>
+	</Section>
+
+	{/* Qué nos diferencia */}
+	<Section decorationBorder="bottom">
+		<Row classes="py-16">
+			<Col span="5" style="transparent">
+				<h2>La diferencia no es el trato: es la estructura</h2>
+			</Col>
+			<Col span="6" start="7" style="transparent">
+				<p>
+					En un banco hay accionistas esperando dividendos, y las utilidades que genera tu
+					operación van hacia ellos. Tu relación es estrictamente comercial.
+				</p>
+				<p>
+					En una cooperativa, al hacer tu aportación te vuelves copropietario. Los excedentes se
+					reinvierten en mejores tasas, más servicios o se distribuyen entre los socios. No hay un
+					tercero externo esperando su parte.
+				</p>
+				<p class="mb-0">
+					Eso también implica obligaciones: participar en la asamblea, informarte y cuidar el
+					patrimonio común, que también es tuyo.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	{/* Transparencia */}
+	<Section decorationBorder="bottom">
+		<Row classes="py-16">
+			<Col span="5" style="transparent">
+				<h2>Transparencia</h2>
+			</Col>
+			<Col span="6" start="7" style="transparent">
+				<p>Cualquier socio puede pedirnos, y le entregamos:</p>
+				<ul>
+					<li>El estado de cuenta completo de sus créditos y su ahorro.</li>
+					<li>La tabla de amortización de cualquier crédito, antes y después de firmarlo.</li>
+					<li>El desglose de cómo se aplicó cada uno de sus pagos.</li>
+					<li>Los estados financieros presentados a la Asamblea General.</li>
+					<li>Las tasas vigentes de todos los productos.</li>
+				</ul>
+				<p class="mb-0">
+					Los tres primeros están disponibles en tu portal las 24 horas, sin pedirlos.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	<Section spacerBottom={false}>
+		<Row classes="py-16">
+			<Col span="8" start="3" align="center" style="transparent">
+				<h2>Súmate a la cooperativa</h2>
+				<p class="text-lead">
+					Hacerte socio toma unos 15 minutos en línea. La aportación al capital social es tuya y
+					se te devuelve si algún día decides causar baja.
+				</p>
+				<div class="mt-8 flex flex-wrap justify-center gap-3">
+					<Button link="/registro" size="lg">Hazte socio</Button>
+					<Button link="/preguntas-frecuentes" size="lg" style="neutral">Resolver dudas</Button>
+				</div>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

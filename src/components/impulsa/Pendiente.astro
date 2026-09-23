@@ -1,0 +1,32 @@
+---
+// Tarjeta de "cosas por hacer" del panel
+// ------------
+// Enlaza directo a la bandeja correspondiente. Cuando el contador es cero se
+// atenúa: la ausencia de trabajo pendiente también es información.
+
+type Props = {
+	valor: number
+	etiqueta: string
+	href: string
+	detalle?: string
+}
+
+const { valor, etiqueta, href, detalle } = Astro.props
+const hayTrabajo = valor > 0
+---
+
+<a
+	href={href}
+	class:list={[
+		'panel block no-underline transition-colors',
+		hayTrabajo
+			? 'hover:border-primary-500 dark:hover:border-primary-500'
+			: 'opacity-60 hover:opacity-100'
+	]}
+>
+	<p class:list={['kpi__valor', hayTrabajo && 'text-primary-700 dark:text-primary-300']}>
+		{valor}
+	</p>
+	<p class="kpi__etiqueta">{etiqueta}</p>
+	{detalle && <p class="mt-2 mb-0 text-xs text-neutral-500 dark:text-neutral-400">{detalle}</p>}
+</a>

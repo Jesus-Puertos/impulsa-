@@ -1,0 +1,232 @@
+---
+// Portal - Detalle de un crédito con su tabla de amortización y sus pagos.
+export const prerender = false
+
+import LayoutPortal from '../../../layouts/LayoutPortal.astro'
+import Renglon from '../../../components/impulsa/Renglon.astro'
+import {
+	pesos,
+	porcentaje,
+	fecha,
+	ETIQUETAS_ESTADO_CREDITO,
+	ETIQUETAS_ESTADO_CUOTA,
+	ETIQUETAS_METODO_PAGO
+} from '../../../lib/formato'
+import { ETIQUETAS_PERIODICIDAD } from '../../../lib/credito'
+
+const { supabase, perfil } = Astro.locals
+const { id } = Astro.params
+
+// RLS ya impide leer un crédito ajeno; el filtro por socio evita además que
+// una URL adivinada devuelva 500 en vez de 404.
+const { data: credito } = await supabase
+	.from('v_creditos_detalle')
+	.select('*')
+	.eq('id', id!)
+	.eq('socio_id', perfil!.socio_id!)
+	.maybeSingle()
+
+if (!credito) return Astro.redirect('/portal/creditos')
+
+const [{ data: cuotas }, { data: pagos }] = await Promise.all([
+	supabase.from('amortizaciones').select('*').eq('credito_id', id!).order('numero_cuota'),
+	supabase
+		.from('pagos')
+		.select('*')
+		.eq('credito_id', id!)
+		.eq('cancelado', false)
+		.order('fecha_pago', { ascending: false })
+])
+---
+
+<LayoutPortal title={`Crédito ${credito.folio} | Cooperativa Impulsa`} activo="creditos">
+	<nav class="mb-4 text-sm">
+		<a href="/portal/creditos">← Volver a mis créditos</a>
+	</nav>
+
+	<div class="mb-8 flex flex-wrap items-start justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">{credito.producto_nombre}</h1>
+			<p class="mb-0 text-neutral-500 dark:text-neutral-400">
+				Folio {credito.folio} · Desembolsado el {fecha(credito.fecha_desembolso, 'larga')}
+			</p>
+		</div>
+		<span class={`estado estado--${credito.estado}`}>
+			{ETIQUETAS_ESTADO_CREDITO[credito.estado]}
+		</span>
+	</div>
+
+	{
+		credito.estado === 'atrasado' && (
+			<div class="aviso aviso--error">
+				<p>
+					Tienes {credito.dias_mora} días de atraso y {pesos(credito.saldo_moratorio)} de
+					intereses moratorios acumulados. Ponerte al corriente detiene ese cargo de inmediato.
+				</p>
+			</div>
+		)
+	}
+
+	{/* Situación actual */}
+	<div class="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+		<div class="panel">
+			<p class="kpi__valor">{pesos(credito.saldo_total)}</p>
+			<p class="kpi__etiqueta">Saldo total</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{pesos(credito.pago_periodico)}</p>
+			<p class="kpi__etiqueta">Pago {ETIQUETAS_PERIODICIDAD[credito.periodicidad].toLowerCase()}</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{fecha(credito.proxima_fecha_pago)}</p>
+			<p class="kpi__etiqueta">Próximo vencimiento</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{porcentaje(credito.porcentaje_amortizado)}</p>
+			<p class="kpi__etiqueta">Amortizado</p>
+		</div>
+	</div>
+
+	<div class="mb-8 grid gap-6 lg:grid-cols-3">
+		{/* Condiciones */}
+		<section class="panel">
+			<h2 class="panel__titulo">Condiciones pactadas</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Monto original" valor={pesos(credito.monto_principal)} />
+				<Renglon etiqueta="Tasa de interés anual" valor={porcentaje(credito.tasa_anual)} />
+				<Renglon
+					etiqueta="Plazo"
+					valor={`${credito.plazo_periodos} ${ETIQUETAS_PERIODICIDAD[credito.periodicidad].toLowerCase()}`}
+				/>
+				<Renglon etiqueta="Vencimiento final" valor={fecha(credito.fecha_vencimiento)} />
+				<Renglon etiqueta="Total pagado" valor={pesos(credito.total_pagado)} />
+			</dl>
+		</section>
+
+		{/* Desglose del saldo */}
+		<section class="panel">
+			<h2 class="panel__titulo">Desglose del saldo</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Capital insoluto" valor={pesos(credito.saldo_capital)} />
+				<Renglon etiqueta="Intereses devengados" valor={pesos(credito.saldo_interes)} />
+				<Renglon etiqueta="Intereses moratorios" valor={pesos(credito.saldo_moratorio)} />
+				<div class="border-t border-neutral-200 pt-2.5 dark:border-neutral-700">
+					<Renglon etiqueta="Total a liquidar hoy" valor={pesos(credito.saldo_total)} fuerte />
+				</div>
+			</dl>
+			<p class="small mt-4 mb-0">
+				Liquidar antes de tiempo no tiene penalización y reduce los intereses que pagarías.
+			</p>
+		</section>
+
+		{/* Cómo pagar */}
+		<section class="panel">
+			<h2 class="panel__titulo">Cómo pagar</h2>
+			<ul class="space-y-2 text-sm">
+				<li>En ventanilla de cualquier sucursal, con tu número de socio.</li>
+				<li>Por transferencia a la cuenta de la cooperativa, citando el folio {credito.folio}.</li>
+				<li>Con depósito referenciado en la tienda de conveniencia.</li>
+			</ul>
+			<a href="/sucursales" class="btn btn--contorno btn--sm mt-2">Ver sucursales</a>
+		</section>
+	</div>
+
+	{/* Tabla de amortización */}
+	<section class="panel mb-8">
+		<h2 class="panel__titulo">Tabla de amortización</h2>
+		<p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+			Este es tu plan de pagos completo. Las cuotas ya liquidadas aparecen marcadas.
+		</p>
+
+		<div class="tabla-scroll max-h-128 overflow-y-auto">
+			<table class="tabla-datos">
+				<thead class="sticky top-0 bg-white dark:bg-neutral-900">
+					<tr>
+						<th>#</th>
+						<th>Vence</th>
+						<th class="num">Saldo inicial</th>
+						<th class="num">Capital</th>
+						<th class="num">Interés</th>
+						<th class="num">Pago</th>
+						<th class="num">Pagado</th>
+						<th>Situación</th>
+					</tr>
+				</thead>
+				<tbody>
+					{
+						(cuotas ?? []).map((c) => {
+							const pagado = c.capital_pagado + c.interes_pagado + c.iva_pagado
+							return (
+								<tr class={c.estado === 'pagada' ? 'opacity-60' : ''}>
+									<td>{c.numero_cuota}</td>
+									<td>{fecha(c.fecha_vencimiento)}</td>
+									<td class="num">{pesos(c.saldo_inicial)}</td>
+									<td class="num">{pesos(c.capital)}</td>
+									<td class="num">{pesos(c.interes)}</td>
+									<td class="num font-medium">{pesos(c.pago_programado)}</td>
+									<td class="num">{pagado > 0 ? pesos(pagado) : '—'}</td>
+									<td>
+										<span class={`estado estado--${c.estado}`}>
+											{ETIQUETAS_ESTADO_CUOTA[c.estado]}
+										</span>
+									</td>
+								</tr>
+							)
+						})
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	{/* Pagos recibidos */}
+	<section class="panel">
+		<h2 class="panel__titulo">Pagos que hemos recibido</h2>
+
+		{
+			pagos && pagos.length > 0 ? (
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Folio</th>
+								<th>Fecha</th>
+								<th>Método</th>
+								<th>Referencia</th>
+								<th class="num">Capital</th>
+								<th class="num">Interés</th>
+								<th class="num">Moratorios</th>
+								<th class="num">Total</th>
+							</tr>
+						</thead>
+						<tbody>
+							{pagos.map((p) => (
+								<tr>
+									<td>{p.folio}</td>
+									<td>{fecha(p.fecha_pago)}</td>
+									<td>{ETIQUETAS_METODO_PAGO[p.metodo]}</td>
+									<td class="text-xs">{p.referencia ?? '—'}</td>
+									<td class="num">{pesos(p.capital_aplicado)}</td>
+									<td class="num">{pesos(p.interes_aplicado + p.iva_aplicado)}</td>
+									<td class="num">{pesos(p.moratorio_aplicado)}</td>
+									<td class="num font-medium">{pesos(p.monto)}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+					Todavía no registramos pagos de este crédito.
+				</p>
+			)
+		}
+	</section>
+</LayoutPortal>
+
+<style>
+	@reference '../../../styles/global.css';
+	.sticky th {
+		@apply bg-white dark:bg-neutral-900;
+	}
+</style>

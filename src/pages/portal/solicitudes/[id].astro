@@ -1,0 +1,198 @@
+---
+// Portal - Detalle de una solicitud
+export const prerender = false
+
+import LayoutPortal from '../../../layouts/LayoutPortal.astro'
+import Renglon from '../../../components/impulsa/Renglon.astro'
+import { pesos, porcentaje, fecha, ETIQUETAS_ESTADO_SOLICITUD } from '../../../lib/formato'
+import { ETIQUETAS_PERIODO, simular } from '../../../lib/credito'
+
+const { supabase, perfil } = Astro.locals
+const { id } = Astro.params
+
+const { data: solicitud } = await supabase
+	.from('solicitudes_credito')
+	.select('*, productos_credito(*)')
+	.eq('id', id!)
+	.eq('socio_id', perfil!.socio_id!)
+	.maybeSingle()
+
+if (!solicitud) return Astro.redirect('/portal/solicitudes')
+
+const producto = solicitud.productos_credito as {
+	nombre: string
+	tasa_anual: number
+	comision_apertura_pct: number
+	requiere_aval: boolean
+	requiere_garantia: boolean
+	requisitos: string[]
+} | null
+
+// Proyección con las condiciones vigentes: si ya hay dictamen se usan las
+// autorizadas, si no, las que pidió el socio.
+const proyeccion = producto
+	? simular({
+			monto: Number(solicitud.monto_aprobado ?? solicitud.monto_solicitado),
+			tasaAnual: Number(solicitud.tasa_aplicada ?? producto.tasa_anual),
+			periodos: solicitud.plazo_aprobado ?? solicitud.plazo_periodos,
+			periodicidad: solicitud.periodicidad,
+			comisionAperturaPct: producto.comision_apertura_pct
+		})
+	: null
+
+const LINEA_TIEMPO = [
+	{ estado: 'borrador', etiqueta: 'Creada' },
+	{ estado: 'enviada', etiqueta: 'Enviada a dictamen' },
+	{ estado: 'en_revision', etiqueta: 'En revisión' },
+	{ estado: 'aprobada', etiqueta: 'Resuelta' },
+	{ estado: 'desembolsada', etiqueta: 'Desembolsada' }
+]
+
+const ORDEN: Record<string, number> = {
+	borrador: 0,
+	enviada: 1,
+	en_revision: 2,
+	aprobada: 3,
+	rechazada: 3,
+	cancelada: 3,
+	desembolsada: 4
+}
+const avance = ORDEN[solicitud.estado] ?? 0
+const rechazada = solicitud.estado === 'rechazada'
+---
+
+<LayoutPortal title={`Solicitud ${solicitud.folio ?? ''} | Cooperativa Impulsa`} activo="solicitudes">
+	<nav class="mb-4 text-sm">
+		<a href="/portal/solicitudes">← Volver a mis solicitudes</a>
+	</nav>
+
+	<div class="mb-8 flex flex-wrap items-start justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">{producto?.nombre ?? 'Solicitud de crédito'}</h1>
+			<p class="mb-0 text-neutral-500 dark:text-neutral-400">
+				{solicitud.folio ?? 'Sin folio'} · Enviada el {fecha(solicitud.fecha_envio ?? solicitud.creado_en, 'larga')}
+			</p>
+		</div>
+		<span class={`estado estado--${solicitud.estado}`}>
+			{ETIQUETAS_ESTADO_SOLICITUD[solicitud.estado]}
+		</span>
+	</div>
+
+	{/* Línea de tiempo */}
+	<ol class="mb-8 flex flex-wrap gap-2" aria-label="Avance de la solicitud">
+		{
+			LINEA_TIEMPO.map((paso, i) => (
+				<li class="flex flex-1 flex-col gap-1.5">
+					<span
+						class:list={[
+							'h-1 rounded-full',
+							i < avance
+								? rechazada && i === avance - 1
+									? 'bg-red-500'
+									: 'bg-campo-500'
+								: i === avance
+									? rechazada
+										? 'bg-red-500'
+										: 'bg-primary-600'
+									: 'bg-neutral-200 dark:bg-neutral-700'
+						]}
+					/>
+					<span class="text-[0.7rem] text-neutral-500 dark:text-neutral-400">
+						{rechazada && paso.estado === 'aprobada' ? 'Rechazada' : paso.etiqueta}
+					</span>
+				</li>
+			))
+		}
+	</ol>
+
+	{
+		solicitud.estado === 'aprobada' && (
+			<div class="aviso aviso--exito">
+				<p>
+					<strong>Tu crédito fue autorizado.</strong> Acude a tu sucursal con tu identificación
+					para firmar el contrato y recibir el desembolso.
+				</p>
+			</div>
+		)
+	}
+	{
+		rechazada && solicitud.motivo_rechazo && (
+			<div class="aviso aviso--error">
+				<p>
+					<strong>Tu solicitud no procedió.</strong> {solicitud.motivo_rechazo}
+				</p>
+				<p class="mb-0 text-sm">
+					Puedes volver a solicitar más adelante. Si quieres entender qué mejorar, tu promotor
+					puede orientarte.
+				</p>
+			</div>
+		)
+	}
+
+	<div class="grid gap-6 lg:grid-cols-2">
+		<section class="panel">
+			<h2 class="panel__titulo">Lo que solicitaste</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Monto" valor={pesos(solicitud.monto_solicitado)} />
+				<Renglon
+					etiqueta="Plazo"
+					valor={`${solicitud.plazo_periodos} ${ETIQUETAS_PERIODO[solicitud.periodicidad]}`}
+				/>
+				<Renglon etiqueta="Destino" valor={solicitud.destino} />
+			</dl>
+			{
+				solicitud.descripcion_destino && (
+					<p class="mt-4 mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+						«{solicitud.descripcion_destino}»
+					</p>
+				)
+			}
+		</section>
+
+		{
+			proyeccion && (
+				<section class="panel">
+					<h2 class="panel__titulo">
+						{solicitud.monto_aprobado ? 'Condiciones autorizadas' : 'Proyección de pagos'}
+					</h2>
+					<dl class="space-y-2.5 text-sm">
+						<Renglon etiqueta="Pago periódico" valor={pesos(proyeccion.pagoPeriodico)} fuerte />
+						<Renglon
+							etiqueta="Tasa anual"
+							valor={porcentaje(Number(solicitud.tasa_aplicada ?? producto?.tasa_anual ?? 0))}
+						/>
+						<Renglon etiqueta="Total de intereses" valor={pesos(proyeccion.totalIntereses)} />
+						<Renglon etiqueta="Total a pagar" valor={pesos(proyeccion.totalAPagar)} />
+						<Renglon etiqueta="CAT informativo" valor={porcentaje(proyeccion.cat)} />
+					</dl>
+					{!solicitud.monto_aprobado && (
+						<p class="small mt-4 mb-0">
+							Cifras estimadas con las condiciones vigentes del producto. El dictamen puede
+							ajustar monto, plazo o tasa.
+						</p>
+					)}
+				</section>
+			)
+		}
+	</div>
+
+	{
+		producto && producto.requisitos.length > 0 && ['enviada', 'en_revision'].includes(solicitud.estado) && (
+			<section class="panel mt-6">
+				<h2 class="panel__titulo">Requisitos de este producto</h2>
+				<ul class="mb-0 space-y-1.5 text-sm">
+					{producto.requisitos.map((r) => (
+						<li>{r}</li>
+					))}
+				</ul>
+				{(producto.requiere_aval || producto.requiere_garantia) && (
+					<p class="small mt-4 mb-0">
+						{producto.requiere_aval && 'Este producto requiere aval socio. '}
+						{producto.requiere_garantia && 'Este producto requiere garantía. '}
+						Te contactaremos para completar ese requisito.
+					</p>
+				)}
+			</section>
+		)
+	}
+</LayoutPortal>

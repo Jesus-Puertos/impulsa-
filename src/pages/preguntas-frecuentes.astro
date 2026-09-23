@@ -1,0 +1,117 @@
+---
+// Preguntas frecuentes (administradas desde el CMS)
+export const prerender = false
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import { clienteServidor } from '../lib/supabase/server'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+
+const { data: preguntas } = await supabase
+	.from('preguntas_frecuentes')
+	.select('*')
+	.eq('estado', 'publicado')
+	.order('categoria')
+	.order('orden')
+
+const categorias = [...new Set((preguntas ?? []).map((p) => p.categoria))]
+---
+
+<Layout
+	title="Preguntas frecuentes | Cooperativa Impulsa"
+	description="Resolvemos las dudas más comunes sobre hacerte socio, solicitar crédito, ahorrar y usar el portal del socio."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" classes="py-16 lg:py-24">
+				<span class="h5">Ayuda</span>
+				<h1>Preguntas frecuentes</h1>
+				<p class="text-lead">
+					Si tu duda no aparece aquí, escríbenos o pasa a cualquier sucursal. Nos gusta explicar.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	<Section>
+		<Row classes="py-16">
+			{/* Índice */}
+			<Col span="3" style="transparent">
+				<nav class="sticky top-24" aria-label="Categorías">
+					<p class="h5">Categorías</p>
+					<ul class="space-y-1">
+						{
+							categorias.map((c) => (
+								<li class="ml-0! list-none pl-0!">
+									<a href={`#${c.toLowerCase().replace(/\s+/g, '-')}`} class="text-sm">
+										{c}
+									</a>
+								</li>
+							))
+						}
+					</ul>
+				</nav>
+			</Col>
+
+			{/* Contenido */}
+			<Col span="8" start="5" style="transparent">
+				{
+					categorias.map((categoria) => (
+						<section id={categoria.toLowerCase().replace(/\s+/g, '-')} class="mb-12">
+							<h2 class="mb-6 text-2xl">{categoria}</h2>
+
+							<div class="space-y-3">
+								{(preguntas ?? [])
+									.filter((p) => p.categoria === categoria)
+									.map((p) => (
+										<details class="group border border-neutral-200 dark:border-neutral-800">
+											<summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-5 font-medium">
+												{p.pregunta}
+												<svg
+													viewBox="0 0 24 24"
+													class="size-5 shrink-0 transition-transform group-open:rotate-45"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2"
+													aria-hidden="true"
+												>
+													<path d="M12 5v14M5 12h14" stroke-linecap="round" />
+												</svg>
+											</summary>
+											<div class="border-t border-dashed border-neutral-200 px-5 py-4 dark:border-neutral-700">
+												<p class="mb-0 text-neutral-600 dark:text-neutral-300">{p.respuesta}</p>
+											</div>
+										</details>
+									))}
+							</div>
+						</section>
+					))
+				}
+
+				{
+					(!preguntas || preguntas.length === 0) && (
+						<p>Todavía no hay preguntas publicadas.</p>
+					)
+				}
+			</Col>
+		</Row>
+	</Section>
+
+	<Section spacerBottom={false}>
+		<Row classes="py-16">
+			<Col span="8" start="3" align="center" style="transparent">
+				<h2>¿Sigues con dudas?</h2>
+				<p class="text-lead">
+					Escríbenos y te respondemos. También puedes llamarnos o pasar a tu sucursal.
+				</p>
+				<div class="mt-8 flex flex-wrap justify-center gap-3">
+					<a href="/contact" class="btn btn--primario">Escríbenos</a>
+					<a href="/sucursales" class="btn btn--contorno">Ver sucursales</a>
+				</div>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

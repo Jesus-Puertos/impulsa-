@@ -1,0 +1,225 @@
+---
+// Panel - Alta de socio en ventanilla
+// ------------
+// Para quien llega a sucursal sin registrarse en línea. El expediente se crea
+// sin cuenta de acceso; el socio puede vincularla después registrándose con la
+// misma CURP, o el personal puede invitarlo por correo.
+
+export const prerender = false
+
+import LayoutAdmin from '../../../layouts/LayoutAdmin.astro'
+import {
+	validarCurp,
+	validarTelefono,
+	fechaNacimientoDesdeCurp,
+	generoDesdeCurp
+} from '../../../lib/validaciones'
+
+const { supabase, perfil } = Astro.locals
+let error: string | null = null
+const previo: Record<string, string> = {}
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const txt = (k: string) => {
+		const v = String(datos.get(k) ?? '').trim()
+		previo[k] = v
+		return v
+	}
+
+	const curp = txt('curp').toUpperCase()
+	const telefono = txt('telefono')
+
+	const validacionCurp = validarCurp(curp)
+	const validacionTel = validarTelefono(telefono)
+
+	if (!validacionCurp.valido) {
+		error = validacionCurp.mensaje!
+	} else if (!validacionTel.valido) {
+		error = validacionTel.mensaje!
+	} else {
+		const fechaNacimiento = fechaNacimientoDesdeCurp(curp)
+
+		const { data, error: errorAlta } = await supabase
+			.from('socios')
+			.insert({
+				nombre: txt('nombre'),
+				apellido_paterno: txt('apellido_paterno'),
+				apellido_materno: txt('apellido_materno') || null,
+				curp,
+				fecha_nacimiento: fechaNacimiento!,
+				genero: generoDesdeCurp(curp),
+				correo: txt('correo') || null,
+				telefono,
+				calle: txt('calle') || null,
+				numero_exterior: txt('numero_exterior') || null,
+				colonia: txt('colonia') || null,
+				municipio: txt('municipio') || null,
+				entidad: txt('entidad') || null,
+				codigo_postal: txt('codigo_postal') || null,
+				ocupacion: txt('ocupacion') || null,
+				ingreso_mensual: Number(datos.get('ingreso_mensual')) || null,
+				egresos_mensuales: Number(datos.get('egresos_mensuales')) || null,
+				sucursal_id: txt('sucursal_id') || perfil!.sucursal_id,
+				promotor_id: perfil!.id,
+				estado: 'prospecto',
+				acepta_aviso_privacidad: datos.get('acepta_aviso_privacidad') === 'on'
+			})
+			.select('id')
+			.single()
+
+		if (errorAlta) {
+			error =
+				errorAlta.code === '23505'
+					? 'Ya existe un expediente con esa CURP. Búscalo en el padrón.'
+					: `No se pudo crear el expediente: ${errorAlta.message}`
+		} else {
+			return Astro.redirect(`/admin/socios/${data.id}`, 303)
+		}
+	}
+}
+
+const { data: sucursales } = await supabase
+	.from('sucursales')
+	.select('id, nombre')
+	.eq('activa', true)
+	.order('orden')
+---
+
+<LayoutAdmin title="Alta de socio | Panel Impulsa" activo="socios">
+	<nav class="mb-4 text-sm">
+		<a href="/admin/socios">← Volver al padrón</a>
+	</nav>
+
+	<h1 class="h2 mb-2">Alta de socio en ventanilla</h1>
+	<p class="mb-6 text-sm text-neutral-500 dark:text-neutral-400">
+		Captura los datos mínimos. Los documentos se suben después desde el expediente.
+	</p>
+
+	{
+		error && (
+			<div class="aviso aviso--error" role="alert">
+				<p>{error}</p>
+			</div>
+		)
+	}
+
+	<form method="POST" class="panel max-w-4xl">
+		<h2 class="panel__titulo">Identidad</h2>
+
+		<div class="campo--fila">
+			<div class="campo">
+				<label for="nombre">Nombre(s) *</label>
+				<input id="nombre" name="nombre" value={previo.nombre ?? ''} required />
+			</div>
+			<div class="campo">
+				<label for="apellido_paterno">Apellido paterno *</label>
+				<input id="apellido_paterno" name="apellido_paterno" value={previo.apellido_paterno ?? ''} required />
+			</div>
+		</div>
+
+		<div class="campo--fila">
+			<div class="campo">
+				<label for="apellido_materno">Apellido materno</label>
+				<input id="apellido_materno" name="apellido_materno" value={previo.apellido_materno ?? ''} />
+			</div>
+			<div class="campo">
+				<label for="curp">CURP *</label>
+				<input id="curp" name="curp" maxlength="18" value={previo.curp ?? ''} required class="uppercase" />
+				<span class="campo__ayuda">La fecha de nacimiento se deduce de la CURP.</span>
+			</div>
+		</div>
+
+		<h2 class="panel__titulo mt-8">Contacto</h2>
+
+		<div class="campo--fila">
+			<div class="campo">
+				<label for="telefono">Teléfono *</label>
+				<input id="telefono" name="telefono" type="tel" value={previo.telefono ?? ''} required />
+			</div>
+			<div class="campo">
+				<label for="correo">Correo</label>
+				<input id="correo" name="correo" type="email" value={previo.correo ?? ''} />
+			</div>
+		</div>
+
+		<h2 class="panel__titulo mt-8">Domicilio</h2>
+
+		<div class="campo--fila">
+			<div class="campo">
+				<label for="calle">Calle</label>
+				<input id="calle" name="calle" value={previo.calle ?? ''} />
+			</div>
+			<div class="campo">
+				<label for="numero_exterior">Número</label>
+				<input id="numero_exterior" name="numero_exterior" value={previo.numero_exterior ?? ''} />
+			</div>
+		</div>
+
+		<div class="campo--fila">
+			<div class="campo">
+				<label for="colonia">Colonia o localidad</label>
+				<input id="colonia" name="colonia" value={previo.colonia ?? ''} />
+			</div>
+			<div class="campo">
+				<label for="codigo_postal">Código postal</label>
+				<input id="codigo_postal" name="codigo_postal" maxlength="5" value={previo.codigo_postal ?? ''} />
+			</div>
+		</div>
+
+		<div class="campo--fila">
+			<div class="campo">
+				<label for="municipio">Municipio</label>
+				<input id="municipio" name="municipio" value={previo.municipio ?? ''} />
+			</div>
+			<div class="campo">
+				<label for="entidad">Estado</label>
+				<input id="entidad" name="entidad" value={previo.entidad ?? 'Veracruz'} />
+			</div>
+		</div>
+
+		<h2 class="panel__titulo mt-8">Actividad económica</h2>
+
+		<div class="campo--fila">
+			<div class="campo">
+				<label for="ocupacion">Ocupación</label>
+				<input id="ocupacion" name="ocupacion" value={previo.ocupacion ?? ''} />
+			</div>
+			<div class="campo">
+				<label for="sucursal_id">Sucursal</label>
+				<select id="sucursal_id" name="sucursal_id">
+					{
+						(sucursales ?? []).map((s) => (
+							<option value={s.id} selected={perfil!.sucursal_id === s.id}>
+								{s.nombre}
+							</option>
+						))
+					}
+				</select>
+			</div>
+		</div>
+
+		<div class="campo--fila">
+			<div class="campo">
+				<label for="ingreso_mensual">Ingreso mensual</label>
+				<input id="ingreso_mensual" name="ingreso_mensual" type="number" min="0" step="100" value={previo.ingreso_mensual ?? ''} />
+			</div>
+			<div class="campo">
+				<label for="egresos_mensuales">Egresos mensuales</label>
+				<input id="egresos_mensuales" name="egresos_mensuales" type="number" min="0" step="100" value={previo.egresos_mensuales ?? ''} />
+			</div>
+		</div>
+
+		<label class="mb-6 flex items-start gap-3 text-sm">
+			<input type="checkbox" name="acepta_aviso_privacidad" class="mb-0! mt-1 size-4 shrink-0 accent-[var(--color-primary-600)]" />
+			<span>
+				El socio firmó el aviso de privacidad en papel y autoriza el tratamiento de sus datos.
+			</span>
+		</label>
+
+		<div class="flex gap-2">
+			<button type="submit" class="btn btn--primario">Crear expediente</button>
+			<a href="/admin/socios" class="btn btn--fantasma">Cancelar</a>
+		</div>
+	</form>
+</LayoutAdmin>

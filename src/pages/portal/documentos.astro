@@ -1,0 +1,92 @@
+---
+// Portal - Documentos del expediente
+// ------------
+// Muestra el estado de revisión de cada documento y permite reemplazar los
+// rechazados. Los verificados quedan bloqueados: cambiarlos requiere pasar
+// por sucursal.
+
+export const prerender = false
+
+import LayoutPortal from '../../layouts/LayoutPortal.astro'
+import GestorDocumentos from '../../components/impulsa/GestorDocumentos'
+import { fecha } from '../../lib/formato'
+
+const { supabase, perfil } = Astro.locals
+const socioId = perfil!.socio_id
+if (!socioId) return Astro.redirect('/registro')
+
+const { data: documentos } = await supabase
+	.from('documentos_socio')
+	.select('*')
+	.eq('socio_id', socioId)
+	.order('tipo')
+
+const rechazados = (documentos ?? []).filter((d) => d.estado === 'rechazado')
+const pendientes = (documentos ?? []).filter((d) => d.estado === 'pendiente')
+const editable = ['prospecto', 'en_revision'].includes(perfil!.socio_estado ?? '')
+---
+
+<LayoutPortal title="Mis documentos | Cooperativa Impulsa" activo="documentos">
+	<h1 class="h2 mb-2">Mis documentos</h1>
+	<p class="mb-8 text-neutral-500 dark:text-neutral-400">
+		Aquí ves el estado de cada documento de tu expediente.
+	</p>
+
+	{
+		rechazados.length > 0 && (
+			<div class="aviso aviso--error">
+				<p>
+					Tenemos {rechazados.length} documento(s) rechazado(s). Revisa el motivo abajo y súbelos
+					de nuevo para continuar con tu trámite.
+				</p>
+			</div>
+		)
+	}
+	{
+		rechazados.length === 0 && pendientes.length > 0 && (
+			<div class="aviso aviso--info">
+				<p>
+					{pendientes.length} documento(s) están en revisión. Te avisaremos en cuanto los
+					validemos.
+				</p>
+			</div>
+		)
+	}
+
+	<GestorDocumentos
+		client:load
+		documentos={(documentos ?? []).map((d) => ({
+			tipo: d.tipo,
+			estado: d.estado,
+			nombre_archivo: d.nombre_archivo,
+			motivo_rechazo: d.motivo_rechazo,
+			revisado_en: d.revisado_en ? fecha(d.revisado_en) : null
+		}))}
+		editable={editable}
+	/>
+
+	<div class="panel mt-8">
+		<h2 class="panel__titulo">¿Por qué pedimos estos documentos?</h2>
+		<p class="mb-3 text-sm">
+			Somos una entidad de ahorro y crédito, y la ley nos obliga a identificar plenamente a cada
+			socio antes de operar con él. Es lo que se conoce como <em>conocimiento del cliente</em>.
+		</p>
+		<ul class="mb-0 space-y-1.5 text-sm">
+			<li>
+				<strong>INE (ambos lados):</strong> acredita tu identidad y tu firma.
+			</li>
+			<li>
+				<strong>Comprobante de domicilio:</strong> confirma dónde vives, para visitas y
+				notificaciones.
+			</li>
+			<li>
+				<strong>Comprobante de ingresos:</strong> nos permite dimensionar un crédito que sí puedas
+				pagar.
+			</li>
+		</ul>
+		<p class="small mt-4 mb-0">
+			Tus documentos se guardan cifrados y solo los consulta el personal autorizado. Consulta el
+			<a href="/aviso-de-privacidad"> aviso de privacidad</a>.
+		</p>
+	</div>
+</LayoutPortal>

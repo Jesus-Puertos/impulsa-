@@ -1,166 +1,75 @@
-# Mizu Light Astro Theme
+# Cooperativa Impulsa
 
-Mizu Light is a product launch template designed specifically for modern SaaS products, digital launches, and ambitious startups. Perfect for landing pages, beta signups, and early access campaigns.
+Plataforma digital de la cooperativa: sitio público, simulador de crédito,
+registro de socios con expediente digital, portal del socio y panel
+administrativo propio.
 
-![mizu](https://oxygenna-themes.b-cdn.net/mizu-light-astro/mizu-light-02.jpg)
+Construido con **Astro 5**, **Tailwind CSS 4**, **React** y **Supabase**
+(PostgreSQL, Auth y Storage).
 
-[![View live Demo](https://oxygenna-themes.b-cdn.net/mizu-astro/demo-button.svg)](https://mizu-light-theme.netlify.app/) [![Page Speed Insights (100%)](https://oxygenna-themes.b-cdn.net/mizu-astro/button-pagespeed.svg)](https://pagespeed.web.dev/analysis/https-mizu-light-theme-netlify-app/r1kw15xyy9?form_factor=desktop)
+## Arranque rápido
 
-## Introduction
-
-### About
-
-Mizu Light is a product launch template designed for modern SaaS companies, digital products, and ambitious startups. With its clean design, intuitive layout, and focus on user experience, it’s the perfect solution for promoting beta programs, early access signups, or pre-launch campaigns.
-
-### Features
-
-- **Pre-Built Pages:** Get started quickly with a full set of professionally designed pages, ready to launch right out of the box.
-- **Optimized 100/100 PageSpeed:** Mizu Light is built for speed, delivering lightning-fast load times and perfect scores on Google PageSpeed.
-- **Flexible Modular Blocks:** Every page is made from reusable, flexible blocks—easily add, rearrange, or expand content using our ever-growing library.
-- **Reusable UI Components:** Keep your design consistent and save time with a complete set of customizable, reusable components.
-- **Built with Astro v5 & Tailwind CSS v4:** Harness the latest frameworks for blazing-fast development and modern, utility-first styling.
-- **Light & Dark Mode:** Let users switch seamlessly between light and dark themes for a fully customizable experience.
-- **SEO-Ready:** Crafted with clean, semantic HTML and optimized metadata to help your site rank higher in search engines.
-- **Content Collections:** Organize, manage, and display content efficiently with Astro’s powerful content collections system.
-- **Smooth Animations:** Enhance the user experience with subtle transitions and page effects.
-- **Analytics Ready:** Supports Google Analytics and Tag Manager for easy tracking and insights.
-- **Responsive Design:** Fully responsive across desktops, tablets, and mobile devices.
-
-## Getting Started
-
-### Commands
-
-After downloading the theme, install the dependencies and run it on your local server. Check the `package.json` file for available scripts.
-
-> **Note**: Requires Node.js version 20.3.0 or later.
-
-| Command           | Action                                       |
-| :---------------- | :------------------------------------------- |
-| `npm install`     | Installs dependencies                        |
-| `npm run dev`     | Starts local dev server at `localhost:4321`  |
-| `npm run build`   | Build your production site to `./dist/`      |
-| `npm run preview` | Preview your build locally, before deploying |
-
-### Folder structure
-
-Inside Toki Astro project, you'll see the following folders and files:
-
-```plaintext
-/
-├── public/
-│   └── favicon.svg
-├── src/
-│   ├── assets/
-│   ├── components/
-│   │   ├── blocks/
-│   │   │   └── ...
-│   │   ├── scripts/
-│   │   │   └── ...
-│   │   └── ui/
-│   │       └── ...
-│   ├── config/
-│   │   └── ...
-│   ├── content/
-│   │   └── blog/
-│   ├── data/
-│   │   └── ...
-│   ├── icons/
-│   │   └── ...
-│   ├── layouts/
-│   │   └── ...
-│   └── pages/
-│       └── ...
-└── package.json
+```bash
+npm install
+cp .env.example .env        # rellena con tus credenciales de Supabase
+npm run dev                 # http://localhost:4321
 ```
 
-| Directory/File           | Description                                                                                                                        |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `public/`                | Contains static assets like images and the favicon. These files are served directly at the root URL.                               |
-| `src/assets/`            | Contains all images and assets used in the project.                                                                                |
-| `src/components/`        | Contains reusable components for your site. This directory is divided into `ui` for UI components and `blocks` for section blocks. |
-| `src/components/blocks/` | Contains Section blocks used throughout the site.                                                                                  |
-| `src/components/ui/`     | Contains individual UI components.                                                                                                 |
-| `src/config/`            | Contains configuration files for the project in typescript format.                                                                 |
-| `src/content/`           | Holds collection data, such as case studies.                                                                                       |
-| `src/data/`              | Contains JSON files with content data (like features, testimonials etc).                                                           |
-| `src/icons/`             | Contains all icons used in the project, most are sourced from [Heroicons](https://heroicons.com/).                                 |
-| `src/layouts/`           | Contains layout components that define the overall structure of your pages.                                                        |
-| `src/pages/`             | Contains `.astro` files for each page. Each file here is exposed as a route based on its file name.                                |
-| `package.json`           | Lists dependencies and scripts for your project, including metadata and various package requirements.                              |
+Antes necesitas un proyecto de Supabase con las migraciones aplicadas. El paso a
+paso está en **[docs/02-puesta-en-marcha.md](docs/02-puesta-en-marcha.md)**.
 
-## Theme Configuration
+## Documentación
 
-The configuration files are located in the `src/config` directory, written in TypeScript. They contain various settings for the theme, including:
+Toda en **[`docs/`](docs/)**:
 
-| Configuration Files        | Description                                                              |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `src/config/config.ts`     | Basic configuration settings including SEO, mode, and scroll animations. |
-| `src/config/navigation.ts` | Menu TypeScript interface options and JSON files for navigation.         |
-| `src/config/analytics.ts`  | Analytics configuration file.                                            |
+| Documento                                                    | Contenido                                       |
+| ------------------------------------------------------------ | ----------------------------------------------- |
+| [01 · Arquitectura](docs/01-arquitectura.md)                  | Cómo está armado y por qué                      |
+| [02 · Puesta en marcha](docs/02-puesta-en-marcha.md)          | De cero a funcionando                           |
+| [03 · Modelo de datos](docs/03-modelo-de-datos.md)            | Las 26 tablas, campo por campo                  |
+| [04 · Seguridad y RLS](docs/04-seguridad-y-rls.md)            | Quién puede ver qué, y cómo se garantiza        |
+| [05 · Identidad corporativa](docs/05-identidad-corporativa.md)| Colores, tipografía y marca                     |
+| [06 · Funcionalidades](docs/06-funcionalidades.md)            | Todo lo que hace, y lo que falta                |
+| [07 · Motor de crédito](docs/07-motor-de-credito.md)          | Las fórmulas del dinero                         |
+| [08 · Roles y permisos](docs/08-roles-y-permisos.md)          | Los seis roles y qué puede cada uno             |
+| [09 · Despliegue](docs/09-despliegue.md)                      | Publicar en Netlify o Vercel                    |
+| [10 · Operación diaria](docs/10-operacion-diaria.md)          | Manual para el personal                         |
 
-## Theme Customization
+Las migraciones de base de datos están en
+[`supabase/migrations/`](supabase/migrations/) y los datos iniciales en
+[`supabase/seed.sql`](supabase/seed.sql).
 
-### Customize the Colors
+## Mapa de rutas
 
-The theme uses two main colors: primary and neutral. These colors are defined in the Tailwind CSS configuration file. To personalize the color scheme of your project, you can easily modify these color values.
+**Público** · `/` `/creditos` `/ahorro` `/simulador` `/blog` `/nosotros`
+`/sucursales` `/preguntas-frecuentes` `/contact` `/terms`
+`/aviso-de-privacidad` `/registro` `/acceso`
 
-To customize the colors, follow these steps:
+**Socio** (requiere sesión) · `/portal` y sus nueve secciones
 
-1. Open the `global.css` file.
-2. Find the `theme` section within the file.
-3. Under `theme`, locate the `Colors`.
-4. Modify the color values for `primary` and `neutral` to suit your preferred color palette.
+**Personal** (requiere rol) · `/admin` y sus catorce pantallas
 
-You can use the [tailwind CSS colors](https://nodejs.org/en/download/) or create your [own palette](https://uicolors.app/create) .
+## Comandos
 
-### Customize the Fonts
+| Comando            | Qué hace                                          |
+| ------------------ | ------------------------------------------------- |
+| `npm run dev`      | Servidor de desarrollo en el puerto 4321          |
+| `npm run build`    | Verifica tipos y compila para producción          |
+| `npm run preview`  | Sirve el build local                              |
+| `npx astro check`  | Solo verificación de tipos                        |
 
-To customize the fonts used in your project, follow these steps:
+## Antes de operar con dinero real
 
-1. **Add Your Custom Font Files**
-   Replace or add the desired font files in the public directory of your project.
+1. Reemplaza el isotipo provisional por el oficial de la cooperativa
+2. Captura las condiciones de producto autorizadas por el Consejo
+3. Somete el aviso de privacidad y los términos a revisión jurídica
+4. Activa la confirmación de correo en Supabase Auth
+5. Programa `actualizar_mora()` para que corra a diario
 
-2. **Update the Tailwind CSS Configuration**
+El detalle de cada punto está en
+[docs/06-funcionalidades.md § Pendientes](docs/06-funcionalidades.md#pendientes).
 
-   Open the `global.css` file. In the `@font-face` section, find the `font-family` property and update the `font-family` object.
+---
 
-### Dark/Light Mode
-
-By default, the site uses forced modes, which can be either light or dark, depending on the chosen layout. The light layout sets the class to **`mode-light`** and the dark layout sets it to **`mode-dark`**. This setting allows you to maintain a fixed appearance across the site regardless of user preferences or system settings.
-
-However, if you want to give users the ability to switch between themes, you can configure the theme to use the **`mode-auto`** class. You can easily do this by adding the **`mode-auto`** class to the **`src/layouts/Layout.astro`** file instead of using **`mode-light`** or **`mode-dark`** and uncommenting the ThemeSwitcher component in the NavigationBar component.
-
-## Want more themes?
-
-### Mizu Full Version
-
-Get the **Mizu** full version to unlock everything you need for a polished SaaS or product launch. Building on Mizu Light, it includes 14 ready-to-use pages, 34 reusable UI components, and 33 pre-built blocks, along with sliders and refined animations, a powerful Mega Menu, integrated analytics, and full light and dark mode support — making Mizu a complete solution for modern product and startup websites.
-
-![mizu](https://oxygenna-themes.b-cdn.net/mizu-astro/mizu-theme.png)
-
-[![Get Mizu](https://oxygenna-themes.b-cdn.net/mizu-astro/primary-button-get-mizu.svg)](https://astro.build/themes/details/mizu/)
-[![View live Demo](https://oxygenna-themes.b-cdn.net/mizu-astro/secondary-button-mizu-demo.svg)](https://mizu-theme.netlify.app/)
-
-### Toki
-
-Check out **Toki**, a standout agency template with striking design, blazing speed, built for modern agencies and creatives.
-
-![toki-theme](https://oxygenna-themes.b-cdn.net/toki-astro/promo/toki-theme-promo.png)
-
-[![Get Toki](https://oxygenna-themes.b-cdn.net/toki-astro/promo/primary-button-get-toki.svg)](https://astro.build/themes/details/toki/)
-[![View live Demo](https://oxygenna-themes.b-cdn.net/toki-astro/promo/secondary-button-toki-demo.svg)](https://toki-theme.netlify.app/)
-
-### Foxi Pro
-
-Check out **Foxi Pro**, our premium Astro website template with fully responsive, customizable Tailwind CSS components.
-
-![foxi-pro](https://oxygenna-themes.b-cdn.net/foxi-pro-astro/foxi-pro.png)
-
-[![Get Foxi Pro](https://oxygenna-themes.b-cdn.net/foxi-pro-astro/primary-button-get-foxi-pro.svg)](https://astro.build/themes/details/foxi-pro/)
-[![View live Demo](https://oxygenna-themes.b-cdn.net/foxi-pro-astro/secondary-button-foxi-pro-demo.svg)](https://foxi-pro.netlify.app)
-
-## License
-
-Copyright 2026 - Designed & Developed by [Oxygenna](http://www.oxygenna.com/)
-
-[![Hire Us](https://oxygenna-themes.b-cdn.net/foxi-astro/hireus.png)](mailto:themes@oxygenna.com,christos@oxygenna.com)
+Interfaz basada en el tema Mizu Light de Oxygenna, adaptado a la identidad
+corporativa de Cooperativa Impulsa.

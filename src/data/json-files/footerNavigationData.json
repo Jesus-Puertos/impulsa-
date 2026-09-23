@@ -2,46 +2,46 @@
 	"logo": {
 		"src": "/logo-light.svg",
 		"srcDark": "/logo-dark.svg",
-		"alt": "Mizu Light logo"
+		"alt": "Cooperativa Impulsa"
 	},
 	"footerAbout": {
-		"aboutText": "Mizu Light, from idea to impact, without the noise."
+		"aboutText": "Cooperativismo y educación financiera para que cada socio construya su futuro."
 	},
 	"footerColumns": [
 		{
-			"title": "Your Launchpad",
+			"title": "Servicios",
 			"links": [
-				{ "label": "Home", "href": "/" },
-				{ "label": "Features", "href": "/features" },
-				{ "label": "Get Started", "href": "/get-started" },
-				{ "label": "Pricing", "href": "/pricing" }
+				{ "label": "Productos de crédito", "href": "/creditos" },
+				{ "label": "Ahorro e inversión", "href": "/ahorro" },
+				{ "label": "Simulador de crédito", "href": "/simulador" },
+				{ "label": "Hazte socio", "href": "/registro" }
 			]
 		},
 		{
-			"title": "Meet the Crew",
+			"title": "Cooperativa",
 			"links": [
-				{ "label": "About", "href": "/about" },
-				{ "label": "Blog", "href": "/blog" },
-				{ "label": "Contact", "href": "/contact" }
+				{ "label": "Quiénes somos", "href": "/nosotros" },
+				{ "label": "Educación financiera", "href": "/blog" },
+				{ "label": "Sucursales", "href": "/sucursales" },
+				{ "label": "Contacto", "href": "/contact" }
 			]
 		},
 		{
-			"title": "Let's Connect",
+			"title": "Socios",
 			"links": [
-				{ "label": "Twitter / X", "href": "https://x.com/yourhandle" },
-				{ "label": "LinkedIn", "href": "https://www.linkedin.com/company/yourcompany" },
-				{ "label": "GitHub", "href": "https://github.com/yourorg" },
-				{ "label": "LinkedIn", "href": "https://www.linkedin.com/in/yourprofile" },
-				{ "label": "Threads", "href": "https://www.threads.net/@yourhandle" }
+				{ "label": "Portal del socio", "href": "/portal" },
+				{ "label": "Acceder", "href": "/acceso" },
+				{ "label": "Preguntas frecuentes", "href": "/preguntas-frecuentes" },
+				{ "label": "Unidad de atención a socios", "href": "/contact" }
 			]
 		}
 	],
 	"copyright": {
-		"text": "Mizu Light, all rights reserved 2026",
+		"text": "Cooperativa Impulsa, S.C. de A.P. de R.L. de C.V. Todos los derechos reservados 2026",
 		"legal": [
-			{ "label": "Terms", "href": "/terms" },
-			{ "label": "Conditions", "href": "/conditions" },
-			{ "label": "Privacy Policy", "href": "/privacy" }
+			{ "label": "Términos y condiciones", "href": "/terms" },
+			{ "label": "Aviso de privacidad", "href": "/aviso-de-privacidad" },
+			{ "label": "Transparencia", "href": "/terms#transparencia" }
 		]
 	}
 }

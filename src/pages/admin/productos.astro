@@ -1,0 +1,469 @@
+---
+// Panel - Catálogo de productos de crédito y ahorro
+// ------------
+// Las condiciones comerciales viven en la base, no en el código: cambiar una
+// tasa aquí se refleja de inmediato en el simulador y en las solicitudes
+// nuevas. Los créditos ya desembolsados conservan la tasa con la que se
+// pactaron.
+
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { alcanzaRol } from '../../lib/auth'
+import { pesos, porcentaje } from '../../lib/formato'
+import { ETIQUETAS_PERIODICIDAD } from '../../lib/credito'
+import type { Periodicidad } from '../../lib/supabase/database.types'
+
+const { supabase, perfil } = Astro.locals
+
+// El middleware ya exigio que sea personal; aqui se acota al rol minimo
+// que esta seccion requiere. RLS lo reafirma en la base.
+if (!alcanzaRol(perfil!.rol, 'gerente')) return Astro.redirect('/admin')
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const accion = String(datos.get('accion') ?? '')
+	const num = (k: string) => Number(datos.get(k))
+	const txt = (k: string) => String(datos.get(k) ?? '').trim()
+
+	if (accion === 'guardar_credito') {
+		const id = txt('id')
+		const registro = {
+			clave: txt('clave').toUpperCase(),
+			nombre: txt('nombre'),
+			descripcion: txt('descripcion') || null,
+			descripcion_larga: txt('descripcion_larga') || null,
+			monto_minimo: num('monto_minimo'),
+			monto_maximo: num('monto_maximo'),
+			plazo_minimo_periodos: num('plazo_minimo_periodos'),
+			plazo_maximo_periodos: num('plazo_maximo_periodos'),
+			tasa_anual: num('tasa_anual'),
+			tasa_moratoria_anual: num('tasa_moratoria_anual'),
+			comision_apertura_pct: num('comision_apertura_pct'),
+			periodicidad: txt('periodicidad') as Periodicidad,
+			factor_capacidad_pago: num('factor_capacidad_pago'),
+			requiere_aval: datos.get('requiere_aval') === 'on',
+			requiere_garantia: datos.get('requiere_garantia') === 'on',
+			// Un textarea con una línea por elemento es más cómodo de editar que
+			// un campo con comas, sobre todo en requisitos largos.
+			requisitos: txt('requisitos').split('\n').map((r) => r.trim()).filter(Boolean),
+			destinos: txt('destinos').split('\n').map((d) => d.trim()).filter(Boolean),
+			destacado: datos.get('destacado') === 'on',
+			orden: num('orden') || 0,
+			activo: datos.get('activo') === 'on'
+		}
+
+		if (registro.monto_maximo < registro.monto_minimo) {
+			mensaje = { tipo: 'error', texto: 'El monto máximo no puede ser menor que el mínimo.' }
+		} else {
+			const { error } = id
+				? await supabase.from('productos_credito').update(registro).eq('id', id)
+				: await supabase.from('productos_credito').insert(registro)
+
+			mensaje = error
+				? { tipo: 'error', texto: `No se pudo guardar: ${error.message}` }
+				: { tipo: 'exito', texto: `Producto «${registro.nombre}» guardado.` }
+		}
+	} else if (accion === 'guardar_ahorro') {
+		const id = txt('id')
+		const registro = {
+			clave: txt('clave').toUpperCase(),
+			nombre: txt('nombre'),
+			descripcion: txt('descripcion') || null,
+			tasa_anual: num('tasa_anual'),
+			monto_minimo_apertura: num('monto_minimo_apertura'),
+			monto_minimo_saldo: num('monto_minimo_saldo'),
+			plazo_dias: num('plazo_dias') || null,
+			permite_retiro_anticipado: datos.get('permite_retiro_anticipado') === 'on',
+			penalizacion_retiro_pct: num('penalizacion_retiro_pct'),
+			orden: num('orden') || 0,
+			activo: datos.get('activo') === 'on'
+		}
+
+		const { error } = id
+			? await supabase.from('productos_ahorro').update(registro).eq('id', id)
+			: await supabase.from('productos_ahorro').insert(registro)
+
+		mensaje = error
+			? { tipo: 'error', texto: `No se pudo guardar: ${error.message}` }
+			: { tipo: 'exito', texto: `Instrumento «${registro.nombre}» guardado.` }
+	} else if (accion === 'alternar') {
+		const tabla = txt('tabla') === 'ahorro' ? 'productos_ahorro' : 'productos_credito'
+		await supabase
+			.from(tabla)
+			.update({ activo: datos.get('activo_nuevo') === 'true' })
+			.eq('id', txt('id'))
+		mensaje = { tipo: 'exito', texto: 'Disponibilidad actualizada.' }
+	}
+}
+
+const [{ data: credito }, { data: ahorro }] = await Promise.all([
+	supabase.from('productos_credito').select('*').order('orden'),
+	supabase.from('productos_ahorro').select('*').order('orden')
+])
+
+const editarId = Astro.url.searchParams.get('editar')
+const tipoEdicion = Astro.url.searchParams.get('tipo') ?? 'credito'
+const enEdicion =
+	tipoEdicion === 'ahorro'
+		? (ahorro ?? []).find((p) => p.id === editarId)
+		: (credito ?? []).find((p) => p.id === editarId)
+
+const nuevo = Astro.url.searchParams.get('nuevo')
+const PERIODICIDADES: Periodicidad[] = ['semanal', 'catorcenal', 'quincenal', 'mensual']
+---
+
+<LayoutAdmin title="Productos | Panel Impulsa" activo="productos">
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Productos</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				Condiciones comerciales de crédito y ahorro.
+			</p>
+		</div>
+		<div class="flex gap-2">
+			<a href="?nuevo=credito" class="btn btn--primario">Nuevo crédito</a>
+			<a href="?nuevo=ahorro" class="btn btn--contorno">Nuevo instrumento de ahorro</a>
+		</div>
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	{
+		(enEdicion || nuevo) && (
+			<section class="panel mb-8">
+				<h2 class="panel__titulo">
+					{enEdicion ? `Editar «${enEdicion.nombre}»` : 'Nuevo producto'}
+				</h2>
+
+				{(nuevo === 'ahorro' || tipoEdicion === 'ahorro') && (enEdicion || nuevo === 'ahorro') ? (
+					<form method="POST">
+						<input type="hidden" name="accion" value="guardar_ahorro" />
+						{enEdicion && <input type="hidden" name="id" value={enEdicion.id} />}
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="clave">Clave</label>
+								<input id="clave" name="clave" value={enEdicion?.clave ?? ''} required placeholder="AHO-VISTA" />
+							</div>
+							<div class="campo">
+								<label for="nombre">Nombre</label>
+								<input id="nombre" name="nombre" value={enEdicion?.nombre ?? ''} required />
+							</div>
+						</div>
+
+						<div class="campo">
+							<label for="descripcion">Descripción</label>
+							<textarea id="descripcion" name="descripcion" rows="2">{enEdicion?.descripcion ?? ''}</textarea>
+						</div>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="tasa_anual">Rendimiento anual (%)</label>
+								<input id="tasa_anual" name="tasa_anual" type="number" step="0.001" min="0" value={(enEdicion as any)?.tasa_anual ?? 0} required />
+							</div>
+							<div class="campo">
+								<label for="plazo_dias">Plazo forzoso (días)</label>
+								<input id="plazo_dias" name="plazo_dias" type="number" min="0" value={(enEdicion as any)?.plazo_dias ?? ''} />
+								<span class="campo__ayuda">Vacío o 0 para cuentas a la vista.</span>
+							</div>
+						</div>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="monto_minimo_apertura">Apertura mínima</label>
+								<input id="monto_minimo_apertura" name="monto_minimo_apertura" type="number" min="0" step="0.01" value={(enEdicion as any)?.monto_minimo_apertura ?? 0} required />
+							</div>
+							<div class="campo">
+								<label for="monto_minimo_saldo">Saldo mínimo</label>
+								<input id="monto_minimo_saldo" name="monto_minimo_saldo" type="number" min="0" step="0.01" value={(enEdicion as any)?.monto_minimo_saldo ?? 0} required />
+							</div>
+						</div>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="penalizacion_retiro_pct">Penalización por retiro anticipado (%)</label>
+								<input id="penalizacion_retiro_pct" name="penalizacion_retiro_pct" type="number" min="0" max="100" step="0.01" value={(enEdicion as any)?.penalizacion_retiro_pct ?? 0} />
+							</div>
+							<div class="campo">
+								<label for="orden">Orden</label>
+								<input id="orden" name="orden" type="number" value={enEdicion?.orden ?? 0} />
+							</div>
+						</div>
+
+						<div class="mb-6 flex flex-wrap gap-6">
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" name="permite_retiro_anticipado" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={(enEdicion as any)?.permite_retiro_anticipado ?? true} />
+								Permite retiro anticipado
+							</label>
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" name="activo" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={enEdicion?.activo ?? true} />
+								Visible en el sitio
+							</label>
+						</div>
+
+						<div class="flex gap-2">
+							<button type="submit" class="btn btn--primario">Guardar</button>
+							<a href="/admin/productos" class="btn btn--fantasma">Cancelar</a>
+						</div>
+					</form>
+				) : (
+					<form method="POST">
+						<input type="hidden" name="accion" value="guardar_credito" />
+						{enEdicion && <input type="hidden" name="id" value={enEdicion.id} />}
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="clave">Clave</label>
+								<input id="clave" name="clave" value={enEdicion?.clave ?? ''} required placeholder="CRED-PERSONAL" />
+							</div>
+							<div class="campo">
+								<label for="nombre">Nombre comercial</label>
+								<input id="nombre" name="nombre" value={enEdicion?.nombre ?? ''} required />
+							</div>
+						</div>
+
+						<div class="campo">
+							<label for="descripcion">Descripción corta</label>
+							<input id="descripcion" name="descripcion" value={enEdicion?.descripcion ?? ''} />
+							<span class="campo__ayuda">Aparece bajo el nombre en el simulador.</span>
+						</div>
+
+						<div class="campo">
+							<label for="descripcion_larga">Descripción larga</label>
+							<textarea id="descripcion_larga" name="descripcion_larga" rows="3">{(enEdicion as any)?.descripcion_larga ?? ''}</textarea>
+						</div>
+
+						<h3 class="mt-8 text-base">Condiciones financieras</h3>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="monto_minimo">Monto mínimo</label>
+								<input id="monto_minimo" name="monto_minimo" type="number" min="1" step="100" value={(enEdicion as any)?.monto_minimo ?? 1000} required />
+							</div>
+							<div class="campo">
+								<label for="monto_maximo">Monto máximo</label>
+								<input id="monto_maximo" name="monto_maximo" type="number" min="1" step="100" value={(enEdicion as any)?.monto_maximo ?? 50000} required />
+							</div>
+						</div>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="plazo_minimo_periodos">Plazo mínimo (periodos)</label>
+								<input id="plazo_minimo_periodos" name="plazo_minimo_periodos" type="number" min="1" value={(enEdicion as any)?.plazo_minimo_periodos ?? 6} required />
+							</div>
+							<div class="campo">
+								<label for="plazo_maximo_periodos">Plazo máximo (periodos)</label>
+								<input id="plazo_maximo_periodos" name="plazo_maximo_periodos" type="number" min="1" value={(enEdicion as any)?.plazo_maximo_periodos ?? 36} required />
+							</div>
+						</div>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="tasa_anual">Tasa ordinaria anual (%)</label>
+								<input id="tasa_anual" name="tasa_anual" type="number" min="0" max="200" step="0.001" value={(enEdicion as any)?.tasa_anual ?? 24} required />
+							</div>
+							<div class="campo">
+								<label for="tasa_moratoria_anual">Tasa moratoria anual (%)</label>
+								<input id="tasa_moratoria_anual" name="tasa_moratoria_anual" type="number" min="0" step="0.001" value={(enEdicion as any)?.tasa_moratoria_anual ?? 36} required />
+							</div>
+						</div>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="comision_apertura_pct">Comisión por apertura (%)</label>
+								<input id="comision_apertura_pct" name="comision_apertura_pct" type="number" min="0" max="20" step="0.01" value={(enEdicion as any)?.comision_apertura_pct ?? 0} />
+							</div>
+							<div class="campo">
+								<label for="periodicidad">Periodicidad de pago</label>
+								<select id="periodicidad" name="periodicidad">
+									{PERIODICIDADES.map((p) => (
+										<option value={p} selected={(enEdicion as any)?.periodicidad === p}>
+											{ETIQUETAS_PERIODICIDAD[p]}
+										</option>
+									))}
+								</select>
+							</div>
+						</div>
+
+						<div class="campo">
+							<label for="factor_capacidad_pago">Capacidad de pago máxima</label>
+							<input id="factor_capacidad_pago" name="factor_capacidad_pago" type="number" min="0.05" max="1" step="0.005" value={(enEdicion as any)?.factor_capacidad_pago ?? 0.35} class="max-w-40" required />
+							<span class="campo__ayuda">
+								Fracción del ingreso disponible que puede comprometerse. 0.35 = 35 %.
+							</span>
+						</div>
+
+						<h3 class="mt-8 text-base">Requisitos y destinos</h3>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="requisitos">Requisitos (uno por línea)</label>
+								<textarea id="requisitos" name="requisitos" rows="5">{((enEdicion as any)?.requisitos ?? []).join('\n')}</textarea>
+							</div>
+							<div class="campo">
+								<label for="destinos">Destinos permitidos (uno por línea)</label>
+								<textarea id="destinos" name="destinos" rows="5">{((enEdicion as any)?.destinos ?? []).join('\n')}</textarea>
+							</div>
+						</div>
+
+						<div class="campo">
+							<label for="orden">Orden de aparición</label>
+							<input id="orden" name="orden" type="number" value={enEdicion?.orden ?? 0} class="max-w-32" />
+						</div>
+
+						<div class="mb-6 flex flex-wrap gap-6">
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" name="requiere_aval" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={(enEdicion as any)?.requiere_aval ?? false} />
+								Requiere aval
+							</label>
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" name="requiere_garantia" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={(enEdicion as any)?.requiere_garantia ?? false} />
+								Requiere garantía
+							</label>
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" name="destacado" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={(enEdicion as any)?.destacado ?? false} />
+								Destacado
+							</label>
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" name="activo" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={enEdicion?.activo ?? true} />
+								Visible en el sitio
+							</label>
+						</div>
+
+						<div class="flex gap-2">
+							<button type="submit" class="btn btn--primario">Guardar producto</button>
+							<a href="/admin/productos" class="btn btn--fantasma">Cancelar</a>
+						</div>
+					</form>
+				)}
+			</section>
+		)
+	}
+
+	{/* Crédito */}
+	<section class="panel mb-6">
+		<h2 class="panel__titulo">Productos de crédito</h2>
+		<div class="tabla-scroll">
+			<table class="tabla-datos">
+				<thead>
+					<tr>
+						<th>Clave</th>
+						<th>Nombre</th>
+						<th class="num">Monto</th>
+						<th class="num">Plazo</th>
+						<th class="num">Tasa</th>
+						<th class="num">Moratoria</th>
+						<th>Requisitos</th>
+						<th>Estado</th>
+						<th />
+					</tr>
+				</thead>
+				<tbody>
+					{
+						(credito ?? []).map((p) => (
+							<tr>
+								<td class="font-mono text-xs">{p.clave}</td>
+								<td class="font-medium">{p.nombre}</td>
+								<td class="num text-xs">
+									{pesos(p.monto_minimo)} — {pesos(p.monto_maximo)}
+								</td>
+								<td class="num text-xs">
+									{p.plazo_minimo_periodos}-{p.plazo_maximo_periodos}
+								</td>
+								<td class="num">{porcentaje(p.tasa_anual)}</td>
+								<td class="num">{porcentaje(p.tasa_moratoria_anual)}</td>
+								<td class="text-xs">
+									{p.requiere_aval && <span class="estado estado--pendiente">Aval</span>}
+									{p.requiere_garantia && <span class="estado estado--pendiente">Garantía</span>}
+									{!p.requiere_aval && !p.requiere_garantia && '—'}
+								</td>
+								<td>
+									<span class={`estado estado--${p.activo ? 'activo' : 'inactivo'}`}>
+										{p.activo ? 'Visible' : 'Oculto'}
+									</span>
+								</td>
+								<td class="whitespace-nowrap">
+									<a href={`?editar=${p.id}&tipo=credito`}>Editar</a>
+									<form method="POST" class="mt-1 inline-block">
+										<input type="hidden" name="accion" value="alternar" />
+										<input type="hidden" name="tabla" value="credito" />
+										<input type="hidden" name="id" value={p.id} />
+										<input type="hidden" name="activo_nuevo" value={String(!p.activo)} />
+										<button type="submit" class="btn btn--fantasma btn--sm px-0!">
+											{p.activo ? 'Ocultar' : 'Publicar'}
+										</button>
+									</form>
+								</td>
+							</tr>
+						))
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	{/* Ahorro */}
+	<section class="panel">
+		<h2 class="panel__titulo">Instrumentos de ahorro e inversión</h2>
+		<div class="tabla-scroll">
+			<table class="tabla-datos">
+				<thead>
+					<tr>
+						<th>Clave</th>
+						<th>Nombre</th>
+						<th class="num">Rendimiento</th>
+						<th class="num">Apertura</th>
+						<th>Plazo</th>
+						<th>Retiro anticipado</th>
+						<th>Estado</th>
+						<th />
+					</tr>
+				</thead>
+				<tbody>
+					{
+						(ahorro ?? []).map((p) => (
+							<tr>
+								<td class="font-mono text-xs">{p.clave}</td>
+								<td class="font-medium">{p.nombre}</td>
+								<td class="num">{porcentaje(p.tasa_anual)}</td>
+								<td class="num">{pesos(p.monto_minimo_apertura)}</td>
+								<td class="text-xs">{p.plazo_dias ? `${p.plazo_dias} días` : 'A la vista'}</td>
+								<td class="text-xs">
+									{p.permite_retiro_anticipado
+										? p.penalizacion_retiro_pct > 0
+											? `Sí, ${porcentaje(p.penalizacion_retiro_pct)} penalización`
+											: 'Sí, sin penalización'
+										: 'No'}
+								</td>
+								<td>
+									<span class={`estado estado--${p.activo ? 'activo' : 'inactivo'}`}>
+										{p.activo ? 'Visible' : 'Oculto'}
+									</span>
+								</td>
+								<td class="whitespace-nowrap">
+									<a href={`?editar=${p.id}&tipo=ahorro`}>Editar</a>
+								</td>
+							</tr>
+						))
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	<div class="aviso aviso--info mt-6">
+		<p>
+			Cambiar la tasa de un producto <strong>no altera los créditos ya desembolsados</strong>: cada
+			crédito conserva la tasa con la que se pactó. El cambio aplica a nuevas simulaciones y
+			solicitudes.
+		</p>
+	</div>
+</LayoutAdmin>

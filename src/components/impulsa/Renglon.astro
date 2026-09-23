@@ -1,0 +1,24 @@
+---
+// Renglón de lista de definición
+// ------------
+// Par etiqueta/valor alineado a los extremos. Se usa en los paneles de
+// resumen del portal y del panel administrativo.
+//
+// Properties:
+// - etiqueta: el término
+// - valor: el dato
+// - fuerte: destaca el valor (totales)
+
+type Props = {
+	etiqueta: string
+	valor: string | number
+	fuerte?: boolean
+}
+
+const { etiqueta, valor, fuerte = false } = Astro.props
+---
+
+<div class="flex flex-wrap items-baseline justify-between gap-3">
+	<dt class="text-neutral-500 dark:text-neutral-400">{etiqueta}</dt>
+	<dd class:list={['tabular-nums', fuerte && 'text-base font-semibold']}>{valor}</dd>
+</div>

@@ -22,15 +22,14 @@ export interface Config {
 }
 
 export const configData: Config = {
-	siteTitle:
-		'Mizu Light Astro Theme | Modern SaaS & Startup Landing Page Template for Fast Product Launches by Oxygenna',
+	siteTitle: 'Cooperativa Impulsa | Crédito responsable, ahorro e inclusión financiera',
 	siteDescription:
-		'Launch your next big idea with Mizu Light — a sleek, responsive Astro theme built for SaaS startups and tech companies. Streamline onboarding, showcase features beautifully, and convert visitors into users faster.',
+		'Cooperativa Impulsa promueve el cooperativismo y la educación financiera con crédito responsable, inversiones éticas y ahorro accesible para fortalecer a las comunidades rurales y a nuestros socios.',
 	ogImage: '/og.jpg',
 	logo: {
 		src: '/logo-light.svg',
 		srcDark: '/logo-dark.svg',
-		alt: 'Mizu Light logo'
+		alt: 'Cooperativa Impulsa'
 	},
 	canonical: true,
 	noindex: false,

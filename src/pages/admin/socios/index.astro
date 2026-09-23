@@ -1,0 +1,214 @@
+---
+// Panel - Padrón de socios
+export const prerender = false
+
+import LayoutAdmin from '../../../layouts/LayoutAdmin.astro'
+import { pesos, fecha, ETIQUETAS_ESTADO_SOCIO } from '../../../lib/formato'
+import type { EstadoSocio } from '../../../lib/supabase/database.types'
+
+const { supabase } = Astro.locals
+const params = Astro.url.searchParams
+
+const busqueda = params.get('q')?.trim() ?? ''
+const filtroEstado = params.get('estado') ?? ''
+const soloDocsPendientes = params.get('documentos') === 'pendientes'
+const pagina = Math.max(1, Number(params.get('p') ?? 1))
+const POR_PAGINA = 25
+
+let consulta = supabase
+	.from('v_socios_resumen')
+	.select('*', { count: 'exact' })
+	.order('fecha_alta', { ascending: false, nullsFirst: false })
+
+if (busqueda) {
+	// Se busca en nombre, CURP y número de socio a la vez: quien atiende en
+	// ventanilla no sabe de antemano qué dato le va a dar el socio.
+	consulta = consulta.or(
+		`nombre_completo.ilike.%${busqueda}%,curp.ilike.%${busqueda}%,numero_socio.ilike.%${busqueda}%,telefono.ilike.%${busqueda}%`
+	)
+}
+if (filtroEstado) consulta = consulta.eq('estado', filtroEstado as EstadoSocio)
+if (soloDocsPendientes) consulta = consulta.gt('documentos_pendientes', 0)
+
+const desde = (pagina - 1) * POR_PAGINA
+const { data: socios, count } = await consulta.range(desde, desde + POR_PAGINA - 1)
+
+const total = count ?? 0
+const paginas = Math.ceil(total / POR_PAGINA)
+
+const ESTADOS: EstadoSocio[] = [
+	'prospecto',
+	'en_revision',
+	'activo',
+	'suspendido',
+	'baja',
+	'rechazado'
+]
+
+function urlCon(cambios: Record<string, string>) {
+	const nueva = new URLSearchParams(params)
+	for (const [k, v] of Object.entries(cambios)) {
+		if (v) nueva.set(k, v)
+		else nueva.delete(k)
+	}
+	return `?${nueva.toString()}`
+}
+---
+
+<LayoutAdmin title="Socios | Panel Impulsa" activo="socios">
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Socios</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				{total} registro(s){busqueda && ` que coinciden con «${busqueda}»`}
+			</p>
+		</div>
+		<a href="/admin/socios/nuevo" class="btn btn--primario">Registrar socio</a>
+	</div>
+
+	{/* Filtros */}
+	<form method="GET" class="panel mb-6 flex flex-wrap items-end gap-4">
+		<div class="campo mb-0! min-w-64 flex-1">
+			<label for="q">Buscar</label>
+			<input
+				id="q"
+				name="q"
+				type="search"
+				value={busqueda}
+				placeholder="Nombre, CURP, número de socio o teléfono"
+			/>
+		</div>
+
+		<div class="campo mb-0! w-48">
+			<label for="estado">Situación</label>
+			<select id="estado" name="estado">
+				<option value="">Todas</option>
+				{
+					ESTADOS.map((e) => (
+						<option value={e} selected={filtroEstado === e}>
+							{ETIQUETAS_ESTADO_SOCIO[e]}
+						</option>
+					))
+				}
+			</select>
+		</div>
+
+		<label class="mb-5 flex cursor-pointer items-center gap-2 text-sm">
+			<input
+				type="checkbox"
+				name="documentos"
+				value="pendientes"
+				checked={soloDocsPendientes}
+				class="mb-0! size-4 accent-[var(--color-primary-600)]"
+			/>
+			Con documentos por revisar
+		</label>
+
+		<button type="submit" class="btn btn--primario mb-5">Filtrar</button>
+		{
+			(busqueda || filtroEstado || soloDocsPendientes) && (
+				<a href="/admin/socios" class="btn btn--fantasma mb-5">
+					Limpiar
+				</a>
+			)
+		}
+	</form>
+
+	{/* Tabla */}
+	<div class="panel">
+		{
+			socios && socios.length > 0 ? (
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Socio</th>
+								<th>CURP</th>
+								<th>Contacto</th>
+								<th>Situación</th>
+								<th>Documentos</th>
+								<th class="num">Deuda</th>
+								<th class="num">Ahorro</th>
+								<th>Alta</th>
+								<th />
+							</tr>
+						</thead>
+						<tbody>
+							{socios.map((s) => (
+								<tr>
+									<td>
+										<a href={`/admin/socios/${s.id}`} class="font-medium">
+											{s.nombre_completo}
+										</a>
+										<span class="block text-xs text-neutral-500">
+											{s.numero_socio ?? 'Sin número'} · {s.sucursal_nombre ?? 'Sin sucursal'}
+										</span>
+									</td>
+									<td class="font-mono text-xs">{s.curp}</td>
+									<td class="text-xs">
+										{s.telefono ?? '—'}
+										{s.correo && <span class="block text-neutral-500">{s.correo}</span>}
+									</td>
+									<td>
+										<span class={`estado estado--${s.estado}`}>
+											{ETIQUETAS_ESTADO_SOCIO[s.estado]}
+										</span>
+									</td>
+									<td>
+										{s.documentos_pendientes > 0 ? (
+											<span class="estado estado--pendiente">
+												{s.documentos_pendientes} por revisar
+											</span>
+										) : (
+											<span class="text-xs text-neutral-500">
+												{s.documentos_verificados}/{s.documentos_cargados} validados
+											</span>
+										)}
+									</td>
+									<td class="num">
+										{pesos(s.deuda_total)}
+										{s.dias_mora_maximo && s.dias_mora_maximo > 0 && (
+											<span class="block text-xs text-red-600">{s.dias_mora_maximo} d mora</span>
+										)}
+									</td>
+									<td class="num">{pesos(s.ahorro_total)}</td>
+									<td class="text-xs">{s.fecha_alta ? fecha(s.fecha_alta) : '—'}</td>
+									<td>
+										<a href={`/admin/socios/${s.id}`}>Abrir</a>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<p class="mb-0 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+					No hay socios que coincidan con los filtros.
+				</p>
+			)
+		}
+
+		{/* Paginación */}
+		{
+			paginas > 1 && (
+				<nav class="mt-5 flex items-center justify-between gap-4" aria-label="Paginación">
+					<span class="text-sm text-neutral-500 dark:text-neutral-400">
+						Página {pagina} de {paginas}
+					</span>
+					<div class="flex gap-2">
+						{pagina > 1 && (
+							<a href={urlCon({ p: String(pagina - 1) })} class="btn btn--contorno btn--sm">
+								← Anterior
+							</a>
+						)}
+						{pagina < paginas && (
+							<a href={urlCon({ p: String(pagina + 1) })} class="btn btn--contorno btn--sm">
+								Siguiente →
+							</a>
+						)}
+					</div>
+				</nav>
+			)
+		}
+	</div>
+</LayoutAdmin>

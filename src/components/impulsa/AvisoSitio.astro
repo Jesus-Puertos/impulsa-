@@ -1,0 +1,42 @@
+---
+// Aviso del sitio
+// ------------
+// Barra superior con el comunicado vigente que se administra desde
+// /admin/contenido. Si no hay ninguno activo, no ocupa espacio.
+
+import { clienteServidor } from '../../lib/supabase/server'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+
+// RLS ya filtra por vigencia; el limit evita traer el histórico completo.
+const { data: avisos } = await supabase
+	.from('avisos')
+	.select('*')
+	.eq('activo', true)
+	.order('creado_en', { ascending: false })
+	.limit(1)
+
+const aviso = avisos?.[0]
+
+const TONOS: Record<string, string> = {
+	info: 'bg-primary-600 text-white',
+	exito: 'bg-campo-600 text-white',
+	alerta: 'bg-oro-400 text-neutral-950',
+	error: 'bg-red-600 text-white'
+}
+---
+
+{
+	aviso && (
+		<div class:list={['w-full px-4 py-2.5 text-center text-sm', TONOS[aviso.tipo] ?? TONOS.info]}>
+			<strong>{aviso.titulo}</strong>
+			<span class="mx-2 opacity-80">·</span>
+			<span>{aviso.mensaje}</span>
+			{aviso.enlace && (
+				<a href={aviso.enlace} class="ml-2 font-medium text-inherit! underline">
+					{aviso.texto_enlace ?? 'Saber más'}
+				</a>
+			)}
+		</div>
+	)
+}

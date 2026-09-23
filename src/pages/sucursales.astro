@@ -1,0 +1,106 @@
+---
+// Directorio de sucursales
+export const prerender = false
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import { clienteServidor } from '../lib/supabase/server'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+
+const { data: sucursales } = await supabase
+	.from('sucursales')
+	.select('*')
+	.eq('activa', true)
+	.order('orden')
+---
+
+<Layout
+	title="Sucursales | Cooperativa Impulsa"
+	description="Encuentra la sucursal de Cooperativa Impulsa más cercana: dirección, teléfono y horarios de atención."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" classes="py-16 lg:py-24">
+				<span class="h5">Dónde estamos</span>
+				<h1>Sucursales</h1>
+				<p class="text-lead">
+					Atendemos en persona porque hay trámites que se resuelven mejor de frente. Aquí puedes
+					pagar, abrir tu cuenta de ahorro y entregar tus documentos originales.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	<Section>
+		<Row classes="py-16" style="transparent" decorationBorder="none">
+			{
+				(sucursales ?? []).map((s) => (
+					<Col span="4" spanTablet="6" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+						{s.es_matriz && <span class="estado estado--aprobado mb-3">Matriz</span>}
+						<h2 class="mb-3 text-xl">{s.nombre}</h2>
+
+						<address class="mb-5 text-sm not-italic text-neutral-600 dark:text-neutral-300">
+							{[s.calle, s.numero].filter(Boolean).join(' ')}
+							<br />
+							{[s.colonia, s.municipio].filter(Boolean).join(', ')}
+							<br />
+							{[s.estado, s.codigo_postal].filter(Boolean).join(', ')}
+						</address>
+
+						<dl class="space-y-2 text-sm">
+							{s.telefono && (
+								<div>
+									<dt class="text-xs text-neutral-500 dark:text-neutral-400">Teléfono</dt>
+									<dd>
+										<a href={`tel:${s.telefono.replace(/\D/g, '')}`}>{s.telefono}</a>
+									</dd>
+								</div>
+							)}
+							{s.correo && (
+								<div>
+									<dt class="text-xs text-neutral-500 dark:text-neutral-400">Correo</dt>
+									<dd>
+										<a href={`mailto:${s.correo}`}>{s.correo}</a>
+									</dd>
+								</div>
+							)}
+							{s.horario && (
+								<div>
+									<dt class="text-xs text-neutral-500 dark:text-neutral-400">Horario</dt>
+									<dd>{s.horario}</dd>
+								</div>
+							)}
+						</dl>
+
+						{s.latitud && s.longitud && (
+							<a
+								href={`https://www.google.com/maps/search/?api=1&query=${s.latitud},${s.longitud}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="btn btn--contorno btn--sm mt-5 w-full"
+							>
+								Ver en el mapa
+							</a>
+						)}
+					</Col>
+				))
+			}
+		</Row>
+	</Section>
+
+	<Section spacerBottom={false}>
+		<Row classes="py-16">
+			<Col span="8" start="3" align="center" style="transparent">
+				<h2>¿Prefieres empezar en línea?</h2>
+				<p class="text-lead">
+					Puedes simular tu crédito y capturar tu expediente desde casa. Solo tendrás que pasar a
+					sucursal para la firma y la validación de documentos originales.
+				</p>
+				<a href="/registro" class="btn btn--primario">Iniciar mi registro</a>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

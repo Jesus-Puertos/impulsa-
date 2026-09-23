@@ -1,0 +1,208 @@
+---
+// Portal - Ahorro e inversión del socio
+export const prerender = false
+
+import LayoutPortal from '../../layouts/LayoutPortal.astro'
+import { pesos, porcentaje, fecha } from '../../lib/formato'
+
+const { supabase, perfil } = Astro.locals
+const socioId = perfil!.socio_id
+if (!socioId) return Astro.redirect('/registro')
+
+const { data: cuentas } = await supabase
+	.from('cuentas_ahorro')
+	.select('*, productos_ahorro(nombre, clave, tasa_anual, plazo_dias)')
+	.eq('socio_id', socioId)
+	.order('fecha_apertura', { ascending: false })
+
+// Los movimientos se traen de todas las cuentas en una sola consulta y se
+// agrupan en memoria: son pocos por socio y evita una consulta por cuenta.
+const ids = (cuentas ?? []).map((c) => c.id)
+const { data: movimientos } = ids.length
+	? await supabase
+			.from('movimientos_ahorro')
+			.select('*')
+			.in('cuenta_id', ids)
+			.order('fecha', { ascending: false })
+			.order('creado_en', { ascending: false })
+			.limit(50)
+	: { data: [] }
+
+const saldoTotal = (cuentas ?? []).reduce((s, c) => s + Number(c.saldo), 0)
+
+const { data: productos } = await supabase
+	.from('productos_ahorro')
+	.select('*')
+	.eq('activo', true)
+	.order('orden')
+
+const ETIQUETAS_MOV: Record<string, string> = {
+	deposito: 'Depósito',
+	retiro: 'Retiro',
+	interes: 'Intereses',
+	comision: 'Comisión',
+	ajuste: 'Ajuste'
+}
+---
+
+<LayoutPortal title="Mi ahorro | Cooperativa Impulsa" activo="ahorro">
+	<h1 class="h2 mb-8">Mi ahorro</h1>
+
+	{
+		cuentas && cuentas.length > 0 ? (
+			<>
+				<div class="panel mb-8">
+					<p class="kpi__valor">{pesos(saldoTotal)}</p>
+					<p class="kpi__etiqueta">Saldo total en {cuentas.length} cuenta(s)</p>
+				</div>
+
+				<section class="mb-10 grid gap-4 md:grid-cols-2">
+					{cuentas.map((c) => {
+						const producto = c.productos_ahorro as {
+							nombre: string
+							tasa_anual: number
+							plazo_dias: number | null
+						} | null
+						const avance = c.meta_ahorro
+							? Math.min(100, Math.round((Number(c.saldo) / Number(c.meta_ahorro)) * 100))
+							: null
+
+						return (
+							<article class="panel">
+								<div class="mb-3 flex items-start justify-between gap-3">
+									<div>
+										<h2 class="mb-0 text-lg">{producto?.nombre ?? 'Cuenta de ahorro'}</h2>
+										<p class="mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+											{c.numero_cuenta} · Abierta el {fecha(c.fecha_apertura)}
+										</p>
+									</div>
+									<span class={`estado estado--${c.activa ? 'activo' : 'inactivo'}`}>
+										{c.activa ? 'Activa' : 'Cerrada'}
+									</span>
+								</div>
+
+								<p class="kpi__valor mb-4">{pesos(c.saldo)}</p>
+
+								{avance !== null && (
+									<>
+										<div
+											class="mb-1.5 h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700"
+											role="progressbar"
+											aria-valuenow={avance}
+											aria-valuemin="0"
+											aria-valuemax="100"
+											aria-label="Avance hacia tu meta"
+										>
+											<span
+												class="bg-campo-500 block h-full rounded-full"
+												style={`width: ${avance}%`}
+											/>
+										</div>
+										<p class="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
+											{avance}% de tu meta de {pesos(c.meta_ahorro!)}
+										</p>
+									</>
+								)}
+
+								<dl class="grid grid-cols-2 gap-3 text-sm">
+									<div>
+										<dt class="text-xs text-neutral-500 dark:text-neutral-400">Rendimiento</dt>
+										<dd class="tabular-nums">{porcentaje(producto?.tasa_anual ?? 0)} anual</dd>
+									</div>
+									{c.fecha_vencimiento && (
+										<div>
+											<dt class="text-xs text-neutral-500 dark:text-neutral-400">Vence</dt>
+											<dd class="tabular-nums">{fecha(c.fecha_vencimiento)}</dd>
+										</div>
+									)}
+								</dl>
+							</article>
+						)
+					})}
+				</section>
+
+				<section class="panel">
+					<h2 class="panel__titulo">Últimos movimientos</h2>
+					{movimientos && movimientos.length > 0 ? (
+						<div class="tabla-scroll">
+							<table class="tabla-datos">
+								<thead>
+									<tr>
+										<th>Fecha</th>
+										<th>Folio</th>
+										<th>Concepto</th>
+										<th class="num">Monto</th>
+										<th class="num">Saldo</th>
+									</tr>
+								</thead>
+								<tbody>
+									{movimientos.map((m) => {
+										const suma = ['deposito', 'interes', 'ajuste'].includes(m.tipo)
+										return (
+											<tr>
+												<td>{fecha(m.fecha)}</td>
+												<td class="text-xs">{m.folio}</td>
+												<td>
+													{ETIQUETAS_MOV[m.tipo] ?? m.tipo}
+													{m.notas && (
+														<span class="block text-xs text-neutral-500">{m.notas}</span>
+													)}
+												</td>
+												<td
+													class={`num font-medium ${suma ? 'text-campo-700 dark:text-campo-300' : 'text-red-700 dark:text-red-400'}`}
+												>
+													{suma ? '+' : '−'} {pesos(m.monto)}
+												</td>
+												<td class="num">{pesos(m.saldo_posterior)}</td>
+											</tr>
+										)
+									})}
+								</tbody>
+							</table>
+						</div>
+					) : (
+						<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+							Todavía no hay movimientos en tus cuentas.
+						</p>
+					)}
+				</section>
+			</>
+		) : (
+			<div class="panel mb-10 py-12 text-center">
+				<h2 class="h4">Aún no tienes cuentas de ahorro</h2>
+				<p class="text-neutral-500 dark:text-neutral-400">
+					Abrir tu cuenta toma unos minutos en cualquier sucursal. Estos son los instrumentos
+					disponibles:
+				</p>
+				<a href="/sucursales" class="btn btn--primario">
+					Ver sucursales
+				</a>
+			</div>
+		)
+	}
+
+	{/* Catálogo de productos de ahorro */}
+	{
+		productos && productos.length > 0 && (
+			<section class="mt-10">
+				<h2 class="h4 mb-4">Instrumentos disponibles</h2>
+				<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+					{productos.map((p) => (
+						<article class="panel">
+							<h3 class="mb-1 text-base">{p.nombre}</h3>
+							<p class="font-display text-primary-700 dark:text-primary-300 mb-2 text-2xl">
+								{porcentaje(p.tasa_anual)}
+							</p>
+							<p class="mb-3 text-xs text-neutral-500 dark:text-neutral-400">Rendimiento anual</p>
+							<p class="mb-0 text-sm">{p.descripcion}</p>
+							<p class="small mt-3 mb-0">
+								Desde {pesos(p.monto_minimo_apertura)}
+								{p.plazo_dias ? ` · Plazo ${p.plazo_dias} días` : ' · Sin plazo forzoso'}
+							</p>
+						</article>
+					))}
+				</div>
+			</section>
+		)
+	}
+</LayoutPortal>

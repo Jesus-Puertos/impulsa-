@@ -1,0 +1,148 @@
+---
+// Blog - Artículo individual
+export const prerender = false
+
+import Layout from '../../layouts/Layout.astro'
+import Section from '../../components/ui/Section.astro'
+import Row from '../../components/ui/Row.astro'
+import Col from '../../components/ui/Col.astro'
+import Button from '../../components/ui/Button.astro'
+import { clienteServidor } from '../../lib/supabase/server'
+import { markdownAHtml, minutosDeLectura } from '../../lib/markdown'
+import { fecha } from '../../lib/formato'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+const { slug } = Astro.params
+
+const { data: entrada } = await supabase
+	.from('entradas_blog')
+	.select('*')
+	.eq('slug', slug!)
+	.eq('estado', 'publicado')
+	.maybeSingle()
+
+if (!entrada) return Astro.redirect('/blog')
+
+// Contador de lecturas. Es informativo y se hace sin bloquear el render: si
+// falla, la página se sirve igual.
+supabase
+	.from('entradas_blog')
+	.update({ vistas: entrada.vistas + 1 })
+	.eq('id', entrada.id)
+	.then(() => {})
+
+const html = markdownAHtml(entrada.contenido)
+const minutos = entrada.minutos_lectura ?? minutosDeLectura(entrada.contenido)
+
+// Artículos de la misma categoría para seguir leyendo.
+const { data: relacionados } = await supabase
+	.from('entradas_blog')
+	.select('slug, titulo, resumen, categoria, publicado_en')
+	.eq('estado', 'publicado')
+	.eq('categoria', entrada.categoria)
+	.neq('id', entrada.id)
+	.order('publicado_en', { ascending: false })
+	.limit(3)
+---
+
+<Layout
+	title={`${entrada.seo_titulo ?? entrada.titulo} | Cooperativa Impulsa`}
+	description={entrada.seo_descripcion ?? entrada.resumen ?? undefined}
+	ogImage={entrada.imagen_portada ?? undefined}
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" start="3" classes="py-16" style="transparent">
+				<nav class="mb-6 text-sm">
+					<a href="/blog">← Volver a los artículos</a>
+				</nav>
+
+				<span class="h5">{entrada.categoria}</span>
+				<h1>{entrada.titulo}</h1>
+
+				{entrada.resumen && <p class="text-lead">{entrada.resumen}</p>}
+
+				<p class="small mb-0">
+					{entrada.autor_nombre ?? 'Equipo Impulsa'} · {fecha(entrada.publicado_en, 'larga')} ·
+					{minutos} min de lectura
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	<Section>
+		<Row classes="py-16" style="transparent" decorationBorder="none">
+			<Col span="8" start="3" classes="basic-text" style="transparent">
+				{entrada.imagen_portada && (
+					<img
+						src={entrada.imagen_portada}
+						alt=""
+						class="mb-10 w-full"
+						loading="lazy"
+						decoding="async"
+					/>
+				)}
+
+				<article set:html={html} />
+
+				{
+					entrada.etiquetas.length > 0 && (
+						<p class="mt-10 flex flex-wrap gap-2">
+							{entrada.etiquetas.map((t) => (
+								<span class="estado estado--borrador">{t}</span>
+							))}
+						</p>
+					)
+				}
+
+				<div class="aviso aviso--info mt-10">
+					<p class="mb-0">
+						Este contenido es informativo y no constituye asesoría financiera personalizada. Para
+						tu caso concreto, acércate a tu sucursal: te atendemos sin costo.
+					</p>
+				</div>
+			</Col>
+		</Row>
+	</Section>
+
+	{/* Relacionados */}
+	{
+		relacionados && relacionados.length > 0 && (
+			<Section decorationBorder="top">
+				<Row classes="pt-16">
+					<Col span="8" style="transparent">
+						<h2>Sigue leyendo</h2>
+					</Col>
+				</Row>
+				<Row classes="pb-16" style="transparent" decorationBorder="none">
+					{relacionados.map((r) => (
+						<Col span="4" spanTablet="6" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+							<span class="h5">{r.categoria}</span>
+							<h3 class="mt-3 mb-2 text-lg">
+								<a
+									href={`/blog/${r.slug}`}
+									class="text-neutral-950! hover:text-primary-700! dark:text-white! no-underline"
+								>
+									{r.titulo}
+								</a>
+							</h3>
+							<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">{r.resumen}</p>
+						</Col>
+					))}
+				</Row>
+			</Section>
+		)
+	}
+
+	<Section spacerBottom={false}>
+		<Row classes="py-16">
+			<Col span="8" start="3" align="center" style="transparent">
+				<h2>Haz números con tu caso</h2>
+				<p class="text-lead">
+					Lo que leíste aplica mejor cuando lo ves con tus propias cifras. Usa el simulador.
+				</p>
+				<Button link="/simulador" size="lg">Ir al simulador</Button>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

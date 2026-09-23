@@ -1,0 +1,307 @@
+---
+// Panel administrativo - Tablero de indicadores
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import Pendiente from '../../components/impulsa/Pendiente.astro'
+import { pesos, pesosCortos, fecha, tiempoRelativo } from '../../lib/formato'
+import type { KpisPanel } from '../../lib/supabase/database.types'
+
+const { supabase, perfil } = Astro.locals
+
+const [{ data: kpisCrudos }, { data: serie }, { data: pendientes }, { data: recientes }] =
+	await Promise.all([
+		supabase.rpc('kpis_panel'),
+		supabase.rpc('serie_colocacion', { p_meses: 12 }),
+		supabase
+			.from('v_solicitudes_detalle')
+			.select('*')
+			.in('estado', ['enviada', 'en_revision'])
+			.order('fecha_envio')
+			.limit(6),
+		supabase
+			.from('v_cobranza')
+			.select('*')
+			.gt('dias_vencida', 0)
+			.order('dias_vencida', { ascending: false })
+			.limit(6)
+	])
+
+const kpis = kpisCrudos as KpisPanel | null
+
+// Escala de la gráfica: el mes de mayor colocación define el 100%.
+const maximo = Math.max(...(serie ?? []).map((s) => Number(s.monto)), 1)
+
+const indiceMorosidad =
+	kpis && kpis.cartera.saldo_cartera > 0
+		? (kpis.cartera.saldo_en_mora / kpis.cartera.saldo_cartera) * 100
+		: 0
+---
+
+<LayoutAdmin title="Panel | Cooperativa Impulsa" activo="inicio">
+	<div class="mb-8">
+		<h1 class="h2 mb-1">Buen día, {perfil!.nombre}</h1>
+		<p class="mb-0 text-neutral-500 dark:text-neutral-400">
+			Situación de la cooperativa al {fecha(new Date(), 'larga')}.
+		</p>
+	</div>
+
+	{
+		!kpis && (
+			<div class="aviso aviso--error">
+				<p>
+					No pudimos calcular los indicadores. Verifica que las migraciones se hayan aplicado
+					correctamente en Supabase.
+				</p>
+			</div>
+		)
+	}
+
+	{
+		kpis && (
+			<>
+				{/* Indicadores principales */}
+				<section class="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+					<article class="panel">
+						<p class="kpi__valor">{pesosCortos(kpis.cartera.saldo_cartera)}</p>
+						<p class="kpi__etiqueta">Saldo de cartera</p>
+						<p class="mt-2 mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+							{kpis.cartera.creditos_activos} créditos activos
+						</p>
+					</article>
+
+					<article class="panel">
+						<p class="kpi__valor">{pesosCortos(kpis.cartera.colocado_mes)}</p>
+						<p class="kpi__etiqueta">Colocado este mes</p>
+						<p class="mt-2 mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+							{pesosCortos(kpis.cartera.colocado_total)} histórico
+						</p>
+					</article>
+
+					<article class="panel">
+						<p class="kpi__valor">{kpis.socios.activos}</p>
+						<p class="kpi__etiqueta">Socios activos</p>
+						<p class="mt-2 mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+							{kpis.socios.altas_mes} altas este mes
+						</p>
+					</article>
+
+					<article class="panel">
+						<p
+							class:list={[
+								'kpi__valor',
+								indiceMorosidad > 5 ? 'text-red-600 dark:text-red-400' : ''
+							]}
+						>
+							{indiceMorosidad.toFixed(1)}%
+						</p>
+						<p class="kpi__etiqueta">Índice de morosidad</p>
+						<p class="mt-2 mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+							{kpis.cartera.en_mora} créditos · {pesosCortos(kpis.cartera.saldo_en_mora)}
+						</p>
+					</article>
+				</section>
+
+				{/* Cosas por hacer */}
+				<section class="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+					<Pendiente
+						valor={kpis.solicitudes.pendientes}
+						etiqueta="Solicitudes por dictaminar"
+						href="/admin/solicitudes"
+						detalle={pesosCortos(kpis.solicitudes.monto_pendiente)}
+					/>
+					<Pendiente
+						valor={kpis.pendientes.documentos_por_revisar}
+						etiqueta="Documentos por validar"
+						href="/admin/socios?documentos=pendientes"
+					/>
+					<Pendiente
+						valor={kpis.pendientes.leads_sin_contactar}
+						etiqueta="Prospectos por llamar"
+						href="/admin/mensajes?tab=prospectos"
+					/>
+					<Pendiente
+						valor={kpis.pendientes.mensajes_sin_atender}
+						etiqueta="Mensajes sin atender"
+						href="/admin/mensajes"
+					/>
+				</section>
+
+				<div class="mb-8 grid gap-6 xl:grid-cols-3">
+					{/* Colocación mensual */}
+					<section class="panel xl:col-span-2">
+						<h2 class="panel__titulo">Colocación de los últimos 12 meses</h2>
+
+						{serie && serie.length > 0 ? (
+							<>
+								<div class="flex h-48 items-end gap-1.5" role="img" aria-label="Colocación mensual">
+									{serie.map((s) => {
+										const alto = Math.round((Number(s.monto) / maximo) * 100)
+										return (
+											<div class="group relative flex flex-1 flex-col justify-end">
+												<span
+													class="bg-primary-500 hover:bg-primary-600 block rounded-t-sm transition-colors"
+													style={`height: ${Math.max(alto, 2)}%`}
+												/>
+												<span class="sr-only">
+													{fecha(s.mes)}: {pesos(s.monto)} en {s.cantidad} créditos
+												</span>
+												<span
+													class="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 rounded-sm bg-neutral-900 px-2 py-1 text-xs whitespace-nowrap text-white group-hover:block"
+													aria-hidden="true"
+												>
+													{pesosCortos(s.monto)} · {s.cantidad}
+												</span>
+											</div>
+										)
+									})}
+								</div>
+								<div class="mt-2 flex gap-1.5 text-[0.6rem] text-neutral-500 dark:text-neutral-400">
+									{serie.map((s) => (
+										<span class="flex-1 text-center">
+											{new Date(s.mes).toLocaleDateString('es-MX', { month: 'narrow' })}
+										</span>
+									))}
+								</div>
+							</>
+						) : (
+							<p class="mb-0 text-sm text-neutral-500">Todavía no hay créditos desembolsados.</p>
+						)}
+					</section>
+
+					{/* Ahorro y recuperación */}
+					<section class="panel">
+						<h2 class="panel__titulo">Captación y recuperación</h2>
+						<dl class="space-y-4">
+							<div>
+								<dt class="kpi__etiqueta mt-0">Ahorro captado</dt>
+								<dd class="font-display text-2xl tabular-nums">
+									{pesosCortos(kpis.ahorro.saldo_total)}
+								</dd>
+								<p class="mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+									{kpis.ahorro.cuentas} cuentas · {pesosCortos(kpis.ahorro.captado_mes)} este mes
+								</p>
+							</div>
+							<div>
+								<dt class="kpi__etiqueta mt-0">Cobrado este mes</dt>
+								<dd class="font-display text-2xl tabular-nums">
+									{pesosCortos(kpis.recuperacion.cobrado_mes)}
+								</dd>
+							</div>
+							<div>
+								<dt class="kpi__etiqueta mt-0">Por cobrar en 7 días</dt>
+								<dd class="font-display text-2xl tabular-nums">
+									{pesosCortos(kpis.recuperacion.por_cobrar_7d)}
+								</dd>
+							</div>
+						</dl>
+					</section>
+				</div>
+			</>
+		)
+	}
+
+	<div class="grid gap-6 xl:grid-cols-2">
+		{/* Cola de dictamen */}
+		<section class="panel">
+			<div class="mb-4 flex items-center justify-between">
+				<h2 class="panel__titulo mb-0">Solicitudes esperando dictamen</h2>
+				<a href="/admin/solicitudes" class="text-sm">Ver todas</a>
+			</div>
+
+			{
+				pendientes && pendientes.length > 0 ? (
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Socio</th>
+									<th class="num">Monto</th>
+									<th>Espera</th>
+									<th />
+								</tr>
+							</thead>
+							<tbody>
+								{pendientes.map((s) => (
+									<tr>
+										<td>
+											<span class="block font-medium">{s.socio_nombre}</span>
+											<span class="text-xs text-neutral-500">{s.producto_nombre}</span>
+										</td>
+										<td class="num">{pesos(s.monto_solicitado)}</td>
+										<td>
+											<span
+												class:list={[
+													'estado',
+													(s.dias_en_espera ?? 0) > 5 ? 'estado--vencido' : 'estado--pendiente'
+												]}
+											>
+												{s.dias_en_espera ?? 0} días
+											</span>
+										</td>
+										<td>
+											<a href={`/admin/solicitudes/${s.id}`}>Dictaminar</a>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+						No hay solicitudes pendientes. Buen trabajo.
+					</p>
+				)
+			}
+		</section>
+
+		{/* Cartera vencida */}
+		<section class="panel">
+			<div class="mb-4 flex items-center justify-between">
+				<h2 class="panel__titulo mb-0">Cuotas más atrasadas</h2>
+				<a href="/admin/cobranza" class="text-sm">Ver cobranza</a>
+			</div>
+
+			{
+				recientes && recientes.length > 0 ? (
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Socio</th>
+									<th class="num">Adeudo</th>
+									<th>Atraso</th>
+									<th />
+								</tr>
+							</thead>
+							<tbody>
+								{recientes.map((c) => (
+									<tr>
+										<td>
+											<span class="block font-medium">{c.socio_nombre}</span>
+											<span class="text-xs text-neutral-500">{c.socio_telefono ?? 'Sin teléfono'}</span>
+										</td>
+										<td class="num">{pesos(c.total_pendiente)}</td>
+										<td>
+											<span class="estado estado--vencido">{c.dias_vencida} días</span>
+											<span class="block text-xs text-neutral-500">
+												{tiempoRelativo(c.fecha_vencimiento)}
+											</span>
+										</td>
+										<td>
+											<a href={`/admin/creditos/${c.credito_id}`}>Ver</a>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+						No hay cuotas vencidas. Cartera sana.
+					</p>
+				)
+			}
+		</section>
+	</div>
+</LayoutAdmin>

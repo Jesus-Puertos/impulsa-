@@ -1,0 +1,168 @@
+---
+// Panel - Parámetros del sistema
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { alcanzaRol } from '../../lib/auth'
+import { fechaHora } from '../../lib/formato'
+
+const { supabase, perfil } = Astro.locals
+
+// El middleware ya exigio que sea personal; aqui se acota al rol minimo
+// que esta seccion requiere. RLS lo reafirma en la base.
+if (!alcanzaRol(perfil!.rol, 'admin')) return Astro.redirect('/admin')
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const guardados: string[] = []
+	let fallo: string | null = null
+
+	// Cada campo del formulario se llama `valor:<clave>`. Se recorren todos y se
+	// guardan los que cambiaron.
+	for (const [campo, valor] of datos.entries()) {
+		if (!campo.startsWith('valor:')) continue
+
+		const clave = campo.slice(6)
+		const texto = String(valor).trim()
+
+		// El valor se guarda como JSON: número si lo parece, cadena si no. Así el
+		// lector `config_numero` de la base sigue funcionando.
+		const esNumero = texto !== '' && !Number.isNaN(Number(texto))
+		const json = esNumero ? Number(texto) : texto
+
+		const { error } = await supabase
+			.from('configuracion')
+			.update({ valor: json, actualizado_por: perfil!.id })
+			.eq('clave', clave)
+			.eq('editable', true)
+
+		if (error) fallo = error.message
+		else guardados.push(clave)
+	}
+
+	mensaje = fallo
+		? { tipo: 'error', texto: `No se pudieron guardar todos los parámetros: ${fallo}` }
+		: { tipo: 'exito', texto: `${guardados.length} parámetro(s) actualizado(s).` }
+}
+
+const { data: parametros } = await supabase
+	.from('configuracion')
+	.select('*')
+	.order('grupo')
+	.order('clave')
+
+const grupos = [...new Set((parametros ?? []).map((p) => p.grupo))]
+
+const NOMBRES_GRUPO: Record<string, string> = {
+	general: 'Datos de la cooperativa',
+	contacto: 'Contacto y atención',
+	credito: 'Parámetros de crédito',
+	socios: 'Admisión de socios',
+	seguridad: 'Seguridad'
+}
+---
+
+<LayoutAdmin title="Configuración | Panel Impulsa" activo="configuracion">
+	<div class="mb-6">
+		<h1 class="h2 mb-1">Configuración</h1>
+		<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+			Parámetros que usan el simulador, el motor de crédito y el sitio público.
+		</p>
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	<div class="aviso aviso--alerta">
+		<p>
+			Cambiar estos valores afecta cálculos en producción. La tasa moratoria y el IVA sobre
+			intereses se aplican a partir del siguiente cálculo; los créditos ya generados conservan sus
+			condiciones.
+		</p>
+	</div>
+
+	<form method="POST">
+		{
+			grupos.map((grupo) => (
+				<section class="panel mb-6">
+					<h2 class="panel__titulo">{NOMBRES_GRUPO[grupo] ?? grupo}</h2>
+
+					{(parametros ?? [])
+						.filter((p) => p.grupo === grupo)
+						.map((p) => {
+							// El valor llega como JSON; se muestra como texto plano.
+							const texto =
+								typeof p.valor === 'string' ? p.valor : JSON.stringify(p.valor).replace(/^"|"$/g, '')
+
+							return (
+								<div class="campo">
+									<label for={p.clave}>
+										{p.descripcion ?? p.clave}
+										<code class="ml-2 text-xs text-neutral-400">{p.clave}</code>
+									</label>
+									<input
+										id={p.clave}
+										name={`valor:${p.clave}`}
+										value={texto}
+										disabled={!p.editable}
+										readonly={!p.editable}
+									/>
+									{!p.editable && (
+										<span class="campo__ayuda">
+											Este parámetro solo se cambia desde las migraciones.
+										</span>
+									)}
+								</div>
+							)
+						})}
+				</section>
+			))
+		}
+
+		<div class="panel sticky bottom-4 flex items-center justify-between gap-4">
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				Los cambios quedan registrados en la bitácora.
+			</p>
+			<button type="submit" class="btn btn--primario">Guardar configuración</button>
+		</div>
+	</form>
+
+	<section class="panel mt-6">
+		<h2 class="panel__titulo">Referencia rápida</h2>
+		<dl class="space-y-3 text-sm">
+			<div>
+				<dt class="font-medium">iva_intereses_pct</dt>
+				<dd class="text-neutral-500 dark:text-neutral-400">
+					IVA que se agrega a los intereses de cada cuota. Déjalo en 0 mientras la figura fiscal
+					de la cooperativa mantenga los intereses exentos.
+				</dd>
+			</div>
+			<div>
+				<dt class="font-medium">dias_gracia_mora</dt>
+				<dd class="text-neutral-500 dark:text-neutral-400">
+					Días que se dejan pasar tras el vencimiento antes de generar interés moratorio.
+				</dd>
+			</div>
+			<div>
+				<dt class="font-medium">capacidad_pago_maxima</dt>
+				<dd class="text-neutral-500 dark:text-neutral-400">
+					Tope institucional de compromiso del ingreso. Cada producto puede tener el suyo, más
+					estricto.
+				</dd>
+			</div>
+		</dl>
+		<p class="small mt-4 mb-0">
+			Última modificación registrada: {
+				fechaHora(
+					(parametros ?? []).map((p) => p.actualizado_en).sort().reverse()[0]
+				)
+			}
+		</p>
+	</section>
+</LayoutAdmin>

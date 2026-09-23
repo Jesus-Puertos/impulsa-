@@ -1,0 +1,98 @@
+---
+// Simulador de crédito
+// ------------
+// Página SSR: necesita leer los productos vigentes de la base en cada visita
+// para que un cambio de tasa desde /admin se refleje sin volver a desplegar.
+
+export const prerender = false
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import SimuladorCredito from '../components/impulsa/SimuladorCredito'
+import { clienteServidor } from '../lib/supabase/server'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+
+const { data: productos } = await supabase
+	.from('productos_credito')
+	.select('*')
+	.eq('activo', true)
+	.order('orden')
+
+const claveInicial = Astro.url.searchParams.get('producto') ?? undefined
+const autenticado = Boolean(Astro.locals.usuario)
+---
+
+<Layout
+	title="Simulador de crédito | Cooperativa Impulsa"
+	description="Calcula tu pago mensual, el total de intereses y el CAT antes de solicitar tu crédito. Sin compromiso y sin dejar tus datos."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" start="3" align="center" classes="py-16 lg:py-24">
+				<span class="h5">Simulador</span>
+				<h1>Mira tus números antes de decidir</h1>
+				<p class="text-lead">
+					Ajusta el monto y el plazo y verás exactamente cuánto pagarías cada periodo, cuánto de
+					eso son intereses y cuál es el costo total. Sin registrarte y sin compromiso.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	<Section spacerTop={false} decorationBorder="bottom">
+		<Row classes="py-12">
+			<Col span="12">
+				{
+					productos && productos.length > 0 ? (
+						<SimuladorCredito
+							client:load
+							productos={productos}
+							claveInicial={claveInicial}
+							autenticado={autenticado}
+						/>
+					) : (
+						<div class="aviso aviso--alerta">
+							<p>
+								No hay productos de crédito publicados todavía. Si eres del equipo, agrégalos
+								desde <a href="/admin/productos">el panel administrativo</a>.
+							</p>
+						</div>
+					)
+				}
+			</Col>
+		</Row>
+	</Section>
+
+	<Section>
+		<Row classes="py-12">
+			<Col span="4">
+				<h3>¿Cómo se calcula?</h3>
+			</Col>
+			<Col span="7" start="6">
+				<p>
+					Usamos el <strong>sistema francés</strong>: tu pago es igual en cada periodo, pero su
+					composición cambia. Al principio la mayor parte se va a intereses porque el saldo es
+					alto; conforme abonas capital, el interés baja y amortizas más rápido.
+				</p>
+				<p>
+					Los intereses se calculan <strong>sobre saldos insolutos</strong>, es decir, sobre lo que
+					realmente debes en cada momento. Por eso pagar antes de tiempo sí te ahorra dinero, y en
+					Impulsa no cobramos penalización por hacerlo.
+				</p>
+				<p>
+					El <strong>CAT</strong> (Costo Anual Total) que ves incluye la tasa de interés y la
+					comisión por apertura. Es la cifra que debes comparar entre instituciones, no la tasa
+					sola.
+				</p>
+				<p class="small">
+					Los resultados del simulador son informativos y no constituyen una oferta vinculante. El
+					monto, la tasa y el plazo definitivos dependen del dictamen de tu solicitud, de tu
+					capacidad de pago y de tu historial como socio.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

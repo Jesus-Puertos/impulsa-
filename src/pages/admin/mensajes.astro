@@ -1,0 +1,250 @@
+---
+// Panel - Mensajes de contacto y prospectos del simulador
+// ------------
+// Dos bandejas que comparten la misma idea: gente que levantó la mano y espera
+// una llamada. Se ordenan por antigüedad para que nadie quede olvidado.
+
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { pesos, fecha, fechaHora, tiempoRelativo } from '../../lib/formato'
+import { ETIQUETAS_PERIODO } from '../../lib/credito'
+
+const { supabase, perfil } = Astro.locals
+let mensaje: string | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const accion = String(datos.get('accion') ?? '')
+	const id = String(datos.get('id') ?? '')
+
+	if (accion === 'atender_mensaje') {
+		await supabase
+			.from('mensajes_contacto')
+			.update({
+				atendido: true,
+				atendido_por: perfil!.id,
+				atendido_en: new Date().toISOString(),
+				respuesta: String(datos.get('respuesta') ?? '').trim() || null
+			})
+			.eq('id', id)
+		mensaje = 'Mensaje marcado como atendido.'
+	} else if (accion === 'contactar_lead') {
+		await supabase
+			.from('simulaciones')
+			.update({ contactado: true, contactado_por: perfil!.id })
+			.eq('id', id)
+		mensaje = 'Prospecto marcado como contactado.'
+	}
+}
+
+const tab = Astro.url.searchParams.get('tab') ?? 'mensajes'
+const verTodos = Astro.url.searchParams.get('todos') === '1'
+
+let consultaMensajes = supabase
+	.from('mensajes_contacto')
+	.select('*, sucursales(nombre)')
+	.order('creado_en', { ascending: false })
+if (!verTodos) consultaMensajes = consultaMensajes.eq('atendido', false)
+
+let consultaLeads = supabase
+	.from('simulaciones')
+	.select('*, productos_credito(nombre)')
+	.eq('quiere_contacto', true)
+	.order('creado_en', { ascending: false })
+if (!verTodos) consultaLeads = consultaLeads.eq('contactado', false)
+
+const [{ data: mensajes }, { data: leads }] = await Promise.all([
+	consultaMensajes.limit(100),
+	consultaLeads.limit(100)
+])
+
+const [{ count: mensajesPendientes }, { count: leadsPendientes }] = await Promise.all([
+	supabase.from('mensajes_contacto').select('id', { count: 'exact', head: true }).eq('atendido', false),
+	supabase
+		.from('simulaciones')
+		.select('id', { count: 'exact', head: true })
+		.eq('quiere_contacto', true)
+		.eq('contactado', false)
+])
+---
+
+<LayoutAdmin title="Mensajes | Panel Impulsa" activo="mensajes">
+	<div class="mb-6">
+		<h1 class="h2 mb-1">Mensajes y prospectos</h1>
+		<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+			{mensajesPendientes ?? 0} mensaje(s) sin atender · {leadsPendientes ?? 0} prospecto(s) por
+			llamar
+		</p>
+	</div>
+
+	{
+		mensaje && (
+			<div class="aviso aviso--exito" role="status">
+				<p>{mensaje}</p>
+			</div>
+		)
+	}
+
+	<nav class="panel mb-6 flex flex-wrap items-center gap-1.5">
+		<a
+			href={`?tab=mensajes${verTodos ? '&todos=1' : ''}`}
+			class:list={['btn btn--sm no-underline!', tab === 'mensajes' ? 'btn--primario' : 'btn--contorno']}
+		>
+			Formulario de contacto ({mensajesPendientes ?? 0})
+		</a>
+		<a
+			href={`?tab=prospectos${verTodos ? '&todos=1' : ''}`}
+			class:list={['btn btn--sm no-underline!', tab === 'prospectos' ? 'btn--primario' : 'btn--contorno']}
+		>
+			Prospectos del simulador ({leadsPendientes ?? 0})
+		</a>
+
+		<a href={`?tab=${tab}${verTodos ? '' : '&todos=1'}`} class="btn btn--fantasma btn--sm ml-auto">
+			{verTodos ? 'Ver solo pendientes' : 'Ver historial completo'}
+		</a>
+	</nav>
+
+	{/* Mensajes de contacto */}
+	{
+		tab === 'mensajes' && (
+			<div class="space-y-4">
+				{mensajes && mensajes.length > 0 ? (
+					mensajes.map((m) => (
+						<article class="panel">
+							<div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+								<div>
+									<h2 class="mb-0 text-base">{m.asunto ?? 'Sin asunto'}</h2>
+									<p class="mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+										{m.nombre} · <a href={`mailto:${m.correo}`}>{m.correo}</a>
+										{m.telefono && (
+											<>
+												{' · '}
+												<a href={`tel:${m.telefono.replace(/\D/g, '')}`}>{m.telefono}</a>
+											</>
+										)}
+									</p>
+								</div>
+								<div class="text-right">
+									<span class={`estado estado--${m.atendido ? 'aprobado' : 'pendiente'}`}>
+										{m.atendido ? 'Atendido' : 'Pendiente'}
+									</span>
+									<span class="mt-1 block text-xs text-neutral-500">
+										{tiempoRelativo(m.creado_en)}
+									</span>
+								</div>
+							</div>
+
+							<p class="mb-4 rounded-sm bg-neutral-50 p-3 text-sm dark:bg-neutral-800">
+								{m.mensaje}
+							</p>
+
+							{m.atendido ? (
+								<p class="small mb-0">
+									Atendido el {fechaHora(m.atendido_en)}
+									{m.respuesta && ` · «${m.respuesta}»`}
+								</p>
+							) : (
+								<form method="POST" class="flex flex-wrap items-end gap-3">
+									<input type="hidden" name="accion" value="atender_mensaje" />
+									<input type="hidden" name="id" value={m.id} />
+									<div class="campo mb-0! min-w-64 flex-1">
+										<label for={`resp-${m.id}`}>Nota de seguimiento</label>
+										<input id={`resp-${m.id}`} name="respuesta" placeholder="Ej. se le llamó y quedó de pasar a sucursal" />
+									</div>
+									<button type="submit" class="btn btn--primario">
+										Marcar atendido
+									</button>
+								</form>
+							)}
+						</article>
+					))
+				) : (
+					<div class="panel py-10 text-center">
+						<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+							No hay mensajes {verTodos ? 'registrados' : 'pendientes'}.
+						</p>
+					</div>
+				)}
+			</div>
+		)
+	}
+
+	{/* Prospectos */}
+	{
+		tab === 'prospectos' && (
+			<div class="panel">
+				{leads && leads.length > 0 ? (
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Prospecto</th>
+									<th>Contacto</th>
+									<th>Producto simulado</th>
+									<th class="num">Monto</th>
+									<th>Plazo</th>
+									<th class="num">Pago</th>
+									<th>Fecha</th>
+									<th>Situación</th>
+									<th />
+								</tr>
+							</thead>
+							<tbody>
+								{leads.map((l) => (
+									<tr>
+										<td class="font-medium">{l.nombre_contacto ?? 'Anónimo'}</td>
+										<td class="text-xs">
+											{l.telefono_contacto && (
+												<a href={`tel:${l.telefono_contacto.replace(/\D/g, '')}`}>
+													{l.telefono_contacto}
+												</a>
+											)}
+											{l.correo_contacto && (
+												<span class="block">
+													<a href={`mailto:${l.correo_contacto}`}>{l.correo_contacto}</a>
+												</span>
+											)}
+										</td>
+										<td class="text-xs">
+											{(l.productos_credito as { nombre: string } | null)?.nombre ?? '—'}
+										</td>
+										<td class="num">{pesos(l.monto)}</td>
+										<td class="text-xs">
+											{l.plazo_periodos} {ETIQUETAS_PERIODO[l.periodicidad]}
+										</td>
+										<td class="num">{pesos(l.pago_periodico)}</td>
+										<td class="text-xs">
+											{fecha(l.creado_en)}
+											<span class="block text-neutral-500">{tiempoRelativo(l.creado_en)}</span>
+										</td>
+										<td>
+											<span class={`estado estado--${l.contactado ? 'aprobado' : 'pendiente'}`}>
+												{l.contactado ? 'Contactado' : 'Por llamar'}
+											</span>
+										</td>
+										<td>
+											{!l.contactado && (
+												<form method="POST">
+													<input type="hidden" name="accion" value="contactar_lead" />
+													<input type="hidden" name="id" value={l.id} />
+													<button type="submit" class="btn btn--contorno btn--sm">
+														Marcar
+													</button>
+												</form>
+											)}
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<p class="mb-0 py-10 text-center text-sm text-neutral-500 dark:text-neutral-400">
+						No hay prospectos {verTodos ? 'registrados' : 'por contactar'}.
+					</p>
+				)}
+			</div>
+		)
+	}
+</LayoutAdmin>

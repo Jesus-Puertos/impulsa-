@@ -2,24 +2,42 @@
 	"logo": {
 		"src": "/logo-light.svg",
 		"srcDark": "/logo-dark.svg",
-		"alt": "Tailwind Astro Theme"
+		"alt": "Cooperativa Impulsa"
 	},
 	"navItems": [
-		{ "name": "Home", "link": "/" },
-		{ "name": "Pricing", "link": "/pricing" },
-		{ "name": "Features", "link": "/features" },
+		{ "name": "Inicio", "link": "/" },
 		{
-			"name": "Pages",
+			"name": "Créditos",
 			"link": "#",
 			"align": "center",
 			"submenu": [
-				{ "name": "Blog", "link": "/blog" },
-				{ "name": "Single Post", "link": "/blog/small-teams-can-streamline" },
-				{ "name": "Contact", "link": "/contact" },
-				{ "name": "Terms", "link": "/terms" },
-				{ "name": "404", "link": "/404" }
+				{ "name": "Ver productos", "link": "/creditos" },
+				{ "name": "Simulador de crédito", "link": "/simulador" },
+				{ "name": "Solicitar crédito", "link": "/registro" }
+			]
+		},
+		{
+			"name": "Ahorro",
+			"link": "#",
+			"align": "center",
+			"submenu": [
+				{ "name": "Ahorro e inversión", "link": "/ahorro" },
+				{ "name": "Calculadora de ahorro", "link": "/simulador#ahorro" }
+			]
+		},
+		{
+			"name": "Cooperativa",
+			"link": "#",
+			"align": "center",
+			"submenu": [
+				{ "name": "Quiénes somos", "link": "/nosotros" },
+				{ "name": "Educación financiera", "link": "/blog" },
+				{ "name": "Preguntas frecuentes", "link": "/preguntas-frecuentes" },
+				{ "name": "Sucursales", "link": "/sucursales" },
+				{ "name": "Contacto", "link": "/contact" },
+				{ "name": "Transparencia y legal", "link": "/terms" }
 			]
 		}
 	],
-	"navActions": [{ "name": "Try it for free!", "link": "/contact" }]
+	"navActions": [{ "name": "Acceder", "link": "/acceso" }]
 }

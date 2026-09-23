@@ -1,0 +1,94 @@
+---
+// Registro de socio
+// ------------
+// Si la persona ya tiene sesión y un expediente en curso, el formulario arranca
+// donde lo dejó en lugar de pedirle que cree otra cuenta.
+
+export const prerender = false
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import RegistroSocio from '../components/impulsa/RegistroSocio'
+import { clienteServidor } from '../lib/supabase/server'
+import type { TipoDocumento } from '../lib/supabase/database.types'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+const usuario = Astro.locals.usuario
+
+const { data: sucursales } = await supabase
+	.from('sucursales')
+	.select('*')
+	.eq('activa', true)
+	.order('orden')
+
+let expediente = null
+let documentosCargados: TipoDocumento[] = []
+
+if (usuario) {
+	const { data } = await supabase
+		.from('socios')
+		.select('*')
+		.eq('perfil_id', usuario.id)
+		.maybeSingle()
+
+	// Un expediente ya dictaminado no se reedita desde aquí.
+	if (data && ['prospecto', 'en_revision'].includes(data.estado)) {
+		expediente = data
+
+		const { data: documentos } = await supabase
+			.from('documentos_socio')
+			.select('tipo')
+			.eq('socio_id', data.id)
+
+		documentosCargados = (documentos ?? []).map((d) => d.tipo)
+	} else if (data) {
+		return Astro.redirect('/portal')
+	}
+}
+
+const simulacionId = Astro.url.searchParams.get('simulacion') ?? undefined
+---
+
+<Layout
+	title="Hazte socio | Cooperativa Impulsa"
+	description="Regístrate en línea, sube tus documentos y forma parte de la cooperativa. El trámite toma menos de 15 minutos."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" start="3" align="center" classes="py-16">
+				<span class="h5">Hazte socio</span>
+				<h1>Bienvenido a la cooperativa</h1>
+				<p class="text-lead">
+					Llena tus datos y sube tus documentos. Toma unos 15 minutos y puedes hacerlo en varias
+					sesiones: guardamos tu avance en cada paso.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	<Section>
+		<Row classes="py-12" style="transparent" decorationBorder="none">
+			<Col span="12" style="transparent">
+				{
+					simulacionId && (
+						<div class="aviso aviso--info mx-auto max-w-3xl">
+							<p>
+								Guardamos tu simulación. En cuanto termines tu registro podrás convertirla en una
+								solicitud formal.
+							</p>
+						</div>
+					)
+				}
+				<RegistroSocio
+					client:load
+					sucursales={sucursales ?? []}
+					expediente={expediente}
+					documentosCargados={documentosCargados}
+					simulacionId={simulacionId}
+				/>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

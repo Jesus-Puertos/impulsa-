@@ -21,37 +21,81 @@
 }
 
 @theme {
-	/* Container */
+	/* =====================================================================
+	   IDENTIDAD CORPORATIVA - COOPERATIVA IMPULSA
+	   Fuente: "Catalogo de Identidad Corporativa", secciones 1.4.1 y 1.4.2.
+	   Los valores marcados (manual) son colores institucionales literales y
+	   NO deben alterarse (norma 1.2.5, usos incorrectos). Los intermedios se
+	   interpolaron unicamente para completar la escala de interfaz.
+	   ===================================================================== */
 
-	/* Colors */
-	/* Primary */
-	--color-primary-50: oklch(98% 0.016 73.684);
-	--color-primary-100: oklch(95.4% 0.038 75.164);
-	--color-primary-200: oklch(90.1% 0.076 70.697);
-	--color-primary-300: oklch(83.7% 0.128 66.29);
-	--color-primary-400: oklch(75% 0.183 55.934);
-	--color-primary-500: oklch(70.5% 0.213 47.604);
-	--color-primary-600: oklch(64.6% 0.222 41.116);
-	--color-primary-700: oklch(55.3% 0.195 38.402);
-	--color-primary-800: oklch(47% 0.157 37.304);
-	--color-primary-900: oklch(40.8% 0.123 38.172);
-	--color-primary-950: oklch(26.6% 0.079 36.259);
-	/* Neutral */
-	--color-neutral-50: oklch(98.5% 0.001 106.423);
-	--color-neutral-100: oklch(97% 0.001 106.424);
-	--color-neutral-200: oklch(92.3% 0.003 48.717);
-	--color-neutral-300: oklch(86.9% 0.005 56.366);
-	--color-neutral-400: oklch(70.9% 0.01 56.259);
-	--color-neutral-500: oklch(55.3% 0.013 58.071);
-	--color-neutral-600: oklch(44.4% 0.011 73.639);
-	--color-neutral-700: oklch(37.4% 0.01 67.558);
-	--color-neutral-800: oklch(26.8% 0.007 34.298);
-	--color-neutral-900: oklch(21.6% 0.006 56.043);
-	--color-neutral-950: oklch(14.7% 0.004 49.25);
+	/* --- Morado corporativo: color principal de la marca ---------------- */
+	--color-primary-50: #f8f4fa;
+	--color-primary-100: #f0e6f3;
+	--color-primary-200: #ddc7e4;
+	--color-primary-300: #cca8d3; /* (manual) complementario */
+	--color-primary-400: #a878b6;
+	--color-primary-500: #844494; /* (manual) complementario */
+	--color-primary-600: #6e4186; /* (manual) COLOR CORPORATIVO PRINCIPAL */
+	--color-primary-700: #5c146c; /* (manual) */
+	--color-primary-800: #4e354e; /* (manual) */
+	--color-primary-900: #3a1145;
+	--color-primary-950: #251029;
 
-	/* Fonts */
-	--font-headings: 'Clash-Display', sans-serif;
-	--font-body: 'Clash-Grotesk', sans-serif;
+	/* --- Lila corporativo: morado desaturado para fondos y bordes ------- */
+	--color-lila-100: #e9e4eb;
+	--color-lila-300: #c9b0c9; /* (manual) */
+	--color-lila-500: #977da2; /* (manual) COLOR CORPORATIVO */
+	--color-lila-700: #6b5a73;
+
+	/* --- Oro corporativo: acento, llamadas a la accion secundarias ------ */
+	--color-oro-100: #fbf3d0;
+	--color-oro-200: #eed07e; /* (manual) */
+	--color-oro-300: #f3d93a; /* (manual) variante Impulsaurio */
+	--color-oro-400: #eecc2c; /* (manual) COLOR CORPORATIVO */
+	--color-oro-500: #d49031; /* (manual) COLOR CORPORATIVO (ambar) */
+	--color-oro-600: #8c770c; /* (manual) */
+	--color-oro-700: #79670a; /* (manual) */
+	--color-oro-800: #876711; /* (manual) */
+
+	/* --- Verde corporativo: estados positivos, crecimiento, campo ------- */
+	--color-campo-100: #c4dcb4; /* (manual) */
+	--color-campo-200: #b7dca2; /* (manual) */
+	--color-campo-300: #84bc64; /* (manual) */
+	--color-campo-400: #44a41a; /* (manual) */
+	--color-campo-500: #359b06; /* (manual) COLOR CORPORATIVO */
+	--color-campo-600: #349c04; /* (manual) */
+	--color-campo-700: #319503; /* (manual) */
+	--color-campo-800: #256d02;
+
+	/* --- Tierra corporativo: tonos calidos de apoyo --------------------- */
+	--color-tierra-100: #c3bcac; /* (manual) */
+	--color-tierra-200: #c6c0b2; /* (manual) */
+	--color-tierra-400: #94846c; /* (manual) */
+	--color-tierra-500: #93866b; /* (manual) */
+	--color-tierra-700: #4c4638; /* (manual) */
+
+	/* --- Neutros: derivados de la tinta corporativa #141210 ------------- */
+	--color-neutral-50: #faf9f8;
+	--color-neutral-100: #f3f1ef;
+	--color-neutral-200: #e6dfde; /* (manual) */
+	--color-neutral-300: #cfc8c5;
+	--color-neutral-400: #a9a19d;
+	--color-neutral-500: #7c7772;
+	--color-neutral-600: #5d5954;
+	--color-neutral-700: #3e3c39;
+	--color-neutral-800: #262421;
+	--color-neutral-900: #1d1e17; /* (manual) tinta Impulsaurio */
+	--color-neutral-950: #141210; /* (manual) TINTA CORPORATIVA */
+
+	/* --- Fuentes -------------------------------------------------------
+	   Manual 1.3.3 (uso publicitario y editorial): Playfair Display,
+	   Poppins y Archivo Black. La web es un medio publicitario/editorial,
+	   por lo que se adopta ese juego tipografico.
+	   ------------------------------------------------------------------- */
+	--font-headings: 'Playfair Display', Georgia, serif;
+	--font-body: 'Poppins', 'Calibri', 'Segoe UI', sans-serif;
+	--font-display: 'Archivo Black', 'Poppins', sans-serif;
 
 	/* Spacing */
 	--spacing-15: 60px;
@@ -132,27 +176,10 @@
 	}
 }
 
-@font-face {
-	font-family: 'Clash-Display';
-	src:
-		url('/fonts/clashdisplay/ClashDisplay-Variable.woff2') format('woff2'),
-		url('/fonts/clashdisplay/ClashDisplay-Variable.woff') format('woff'),
-		url('/fonts/clashdisplay/ClashDisplay-Variable.ttf') format('truetype');
-	font-weight: 200 700;
-	font-display: swap;
-	font-style: normal;
-}
+/* Las familias corporativas (Playfair Display, Poppins, Archivo Black) se
+   cargan desde el <head> en `src/components/blocks/head/Header.astro`.
+   Para autohospedarlas, consulta `docs/05-identidad-corporativa.md`. */
 
-@font-face {
-	font-family: 'Clash-Grotesk';
-	src:
-		url('/fonts/clashgrotesk/ClashGrotesk-Variable.woff2') format('woff2'),
-		url('/fonts/clashgrotesk/ClashGrotesk-Variable.woff') format('woff'),
-		url('/fonts/clashgrotesk/ClashGrotesk-Variable.ttf') format('truetype');
-	font-weight: 200 700;
-	font-display: swap;
-	font-style: normal;
-}
 /* Layout rules */
 html {
 	@apply scroll-smooth antialiased;
@@ -210,12 +237,12 @@ h6,
 
 h1,
 .h1 {
-	@apply text-5xl leading-14 md:text-7xl md:leading-20 lg:text-[5.375rem] lg:leading-24 lg:tracking-[-2px];
+	@apply text-[2.75rem] leading-13 md:text-6xl md:leading-18 lg:text-[4.5rem] lg:leading-21 lg:tracking-[-1.5px];
 }
 
 h2,
 .h2 {
-	@apply text-4xl lg:text-[4rem] lg:leading-18;
+	@apply text-[2rem] leading-10 lg:text-[3.25rem] lg:leading-15 lg:tracking-[-1px];
 }
 
 h3,
@@ -289,4 +316,197 @@ html.disable-transitions *::before,
 html.disable-transitions *::after {
 	transition: none !important;
 	animation: none !important;
+}
+
+/* =========================================================================
+   CAPA DE APLICACION - Cooperativa Impulsa
+   Componentes usados por el simulador, el registro, el portal del socio y
+   el panel administrativo. Se definen aqui (y no como clases sueltas en
+   cada pagina) para que formularios y tablas se vean igual en todo el
+   sistema.
+   ========================================================================= */
+
+/* --- Campos de formulario ------------------------------------------------
+   El tema base aplica `placeholder-transparent` a los inputs porque usa
+   etiquetas flotantes. En las pantallas de tramite necesitamos etiquetas
+   fijas y legibles, asi que `.campo` restablece el comportamiento normal. */
+.campo {
+	@apply mb-5 flex flex-col gap-1.5;
+}
+.campo > label {
+	@apply font-body text-sm font-medium text-neutral-700 dark:text-neutral-300;
+}
+.campo > .campo__ayuda {
+	@apply text-xs text-neutral-500 dark:text-neutral-400;
+}
+.campo > .campo__error {
+	@apply text-xs font-medium text-red-600 dark:text-red-400;
+}
+.campo input,
+.campo select,
+.campo textarea {
+	@apply mb-0! h-12 w-full rounded-sm border border-neutral-300 bg-white px-3 text-base text-neutral-900 transition-colors outline-none placeholder:text-neutral-400! focus:border-primary-600 focus:ring-2 focus:ring-primary-600/20 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:disabled:bg-neutral-800;
+}
+.campo textarea {
+	@apply h-auto min-h-28 py-3 leading-6;
+}
+.campo select {
+	@apply cursor-pointer appearance-none bg-[url('/bgs/chevron.svg')] bg-[length:14px] bg-[right_0.85rem_center] bg-no-repeat pr-10;
+}
+.campo input[aria-invalid='true'],
+.campo select[aria-invalid='true'],
+.campo textarea[aria-invalid='true'] {
+	@apply border-red-500 focus:border-red-500 focus:ring-red-500/20;
+}
+/* Los inputs vacios no obligatorios no deben pintarse en rojo por :invalid */
+.campo input:not(:focus):placeholder-shown {
+	@apply border-neutral-300 text-neutral-900 dark:border-neutral-700 dark:text-neutral-100;
+}
+.campo--fila {
+	@apply grid gap-x-4 sm:grid-cols-2;
+}
+
+/* --- Deslizadores (simulador) -------------------------------------------
+   Los estilos globales de `form input` y `.campo input` dan a los inputs una
+   altura y un borde de caja de texto; un range necesita lo contrario. */
+.deslizador {
+	@apply mb-0! h-6! w-full cursor-pointer appearance-none border-0! bg-transparent! p-0! focus:ring-0!;
+}
+.deslizador::-webkit-slider-runnable-track {
+	@apply h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700;
+}
+.deslizador::-moz-range-track {
+	@apply h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700;
+}
+.deslizador::-webkit-slider-thumb {
+	@apply bg-primary-600 dark:bg-primary-500 -mt-[7px] h-5 w-5 appearance-none rounded-full border-2 border-white shadow-md transition-transform hover:scale-110 dark:border-neutral-900;
+}
+.deslizador::-moz-range-thumb {
+	@apply bg-primary-600 dark:bg-primary-500 h-5 w-5 rounded-full border-2 border-white shadow-md dark:border-neutral-900;
+}
+.deslizador:focus-visible::-webkit-slider-thumb {
+	@apply ring-primary-600/40 ring-4;
+}
+
+/* --- Botones de aplicacion ---------------------------------------------- */
+.btn {
+	@apply inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-sm px-5 text-sm font-medium whitespace-nowrap transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn--primario {
+	@apply bg-primary-600 text-white hover:bg-primary-700;
+}
+.btn--oro {
+	@apply bg-oro-400 text-neutral-950 hover:bg-oro-500;
+}
+.btn--contorno {
+	@apply border border-neutral-300 bg-white text-neutral-800 hover:border-primary-600 hover:text-primary-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200;
+}
+.btn--peligro {
+	@apply bg-red-600 text-white hover:bg-red-700;
+}
+.btn--fantasma {
+	@apply bg-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800;
+}
+.btn--sm {
+	@apply h-9 px-3 text-xs;
+}
+
+/* --- Tarjetas de panel --------------------------------------------------- */
+.panel {
+	@apply rounded-sm border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900;
+}
+.panel__titulo {
+	@apply font-headings mb-1 text-lg font-medium text-neutral-950 dark:text-white;
+}
+.kpi__valor {
+	@apply font-display text-3xl leading-none text-neutral-950 tabular-nums dark:text-white;
+}
+.kpi__etiqueta {
+	@apply mt-2 text-xs tracking-wider text-neutral-500 uppercase dark:text-neutral-400;
+}
+
+/* --- Tablas de datos ----------------------------------------------------- */
+.tabla-datos {
+	@apply w-full border-collapse text-sm;
+}
+.tabla-datos thead th {
+	@apply border-b border-neutral-200 px-3 py-2.5 text-left text-xs font-semibold tracking-wider text-neutral-500 uppercase dark:border-neutral-800 dark:text-neutral-400;
+}
+.tabla-datos tbody td {
+	@apply border-b border-neutral-100 px-3 py-2.5 align-middle text-neutral-700 dark:border-neutral-800 dark:text-neutral-300;
+}
+.tabla-datos tbody tr:hover td {
+	@apply bg-neutral-50 dark:bg-neutral-800/50;
+}
+.tabla-datos .num {
+	@apply text-right tabular-nums;
+}
+.tabla-scroll {
+	@apply -mx-5 overflow-x-auto px-5;
+}
+
+/* --- Etiquetas de estado -------------------------------------------------
+   Los nombres coinciden con los valores de los ENUM de PostgreSQL para que
+   `estado_credito` pueda mapearse directamente a `estado--${valor}`. */
+.estado {
+	@apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap;
+}
+.estado--borrador,
+.estado--inactivo {
+	@apply bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300;
+}
+.estado--enviada,
+.estado--en_revision,
+.estado--pendiente {
+	@apply bg-oro-100 text-oro-800 dark:bg-oro-800/25 dark:text-oro-200;
+}
+.estado--aprobada,
+.estado--aprobado,
+.estado--activo,
+.estado--vigente,
+.estado--pagado,
+.estado--verificado {
+	@apply bg-campo-100 text-campo-800 dark:bg-campo-800/25 dark:text-campo-200;
+}
+.estado--rechazada,
+.estado--rechazado,
+.estado--vencido,
+.estado--castigado {
+	@apply bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200;
+}
+.estado--desembolsada,
+.estado--liquidado,
+.estado--cerrado {
+	@apply bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200;
+}
+.estado--atrasado,
+.estado--mora {
+	@apply bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200;
+}
+
+/* --- Avisos -------------------------------------------------------------- */
+.aviso {
+	@apply mb-5 rounded-sm border-l-4 p-4 text-sm;
+}
+.aviso--info {
+	@apply border-primary-600 bg-primary-50 text-primary-900 dark:bg-primary-950/40 dark:text-primary-100;
+}
+.aviso--exito {
+	@apply border-campo-500 bg-campo-100/50 text-campo-800 dark:bg-campo-800/20 dark:text-campo-100;
+}
+.aviso--alerta {
+	@apply border-oro-500 bg-oro-100/60 text-oro-800 dark:bg-oro-800/20 dark:text-oro-100;
+}
+.aviso--error {
+	@apply border-red-600 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-100;
+}
+.aviso p:last-child {
+	@apply mb-0;
+}
+
+/* Dentro de paneles y tablas los enlaces no deben heredar el naranja de
+   `main a` del tema base. */
+.panel a:not(.btn),
+.tabla-datos a:not(.btn) {
+	@apply text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200;
 }

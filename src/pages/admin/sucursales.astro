@@ -1,0 +1,235 @@
+---
+// Panel - Red de sucursales
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { alcanzaRol } from '../../lib/auth'
+
+const { supabase, perfil } = Astro.locals
+
+// El middleware ya exigio que sea personal; aqui se acota al rol minimo
+// que esta seccion requiere. RLS lo reafirma en la base.
+if (!alcanzaRol(perfil!.rol, 'gerente')) return Astro.redirect('/admin')
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const txt = (k: string) => String(datos.get(k) ?? '').trim()
+	const id = txt('id')
+
+	if (txt('accion') === 'guardar') {
+		const registro = {
+			clave: txt('clave').toUpperCase(),
+			nombre: txt('nombre'),
+			calle: txt('calle') || null,
+			numero: txt('numero') || null,
+			colonia: txt('colonia') || null,
+			municipio: txt('municipio') || null,
+			estado: txt('estado') || null,
+			codigo_postal: txt('codigo_postal') || null,
+			telefono: txt('telefono') || null,
+			correo: txt('correo') || null,
+			horario: txt('horario') || null,
+			latitud: Number(datos.get('latitud')) || null,
+			longitud: Number(datos.get('longitud')) || null,
+			es_matriz: datos.get('es_matriz') === 'on',
+			activa: datos.get('activa') === 'on',
+			orden: Number(datos.get('orden')) || 0
+		}
+
+		const { error } = id
+			? await supabase.from('sucursales').update(registro).eq('id', id)
+			: await supabase.from('sucursales').insert(registro)
+
+		mensaje = error
+			? {
+					tipo: 'error',
+					texto:
+						error.code === '23505'
+							? 'Ya existe una sucursal con esa clave.'
+							: `No se pudo guardar: ${error.message}`
+				}
+			: { tipo: 'exito', texto: `Sucursal «${registro.nombre}» guardada.` }
+	}
+}
+
+const { data: sucursales } = await supabase.from('sucursales').select('*').order('orden')
+
+const editarId = Astro.url.searchParams.get('editar')
+const nuevo = Astro.url.searchParams.get('nuevo') === '1'
+const sucursal = editarId ? (sucursales ?? []).find((s) => s.id === editarId) : null
+---
+
+<LayoutAdmin title="Sucursales | Panel Impulsa" activo="sucursales">
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Sucursales</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				Los datos que captures aquí aparecen en la página pública de sucursales.
+			</p>
+		</div>
+		<a href="?nuevo=1" class="btn btn--primario">Nueva sucursal</a>
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	{
+		(sucursal || nuevo) && (
+			<section class="panel mb-6">
+				<h2 class="panel__titulo">{sucursal ? `Editar ${sucursal.nombre}` : 'Nueva sucursal'}</h2>
+				<form method="POST">
+					<input type="hidden" name="accion" value="guardar" />
+					{sucursal && <input type="hidden" name="id" value={sucursal.id} />}
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="clave">Clave</label>
+							<input id="clave" name="clave" value={sucursal?.clave ?? ''} required placeholder="SUC-CENTRO" />
+						</div>
+						<div class="campo">
+							<label for="nombre">Nombre</label>
+							<input id="nombre" name="nombre" value={sucursal?.nombre ?? ''} required />
+						</div>
+					</div>
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="calle">Calle</label>
+							<input id="calle" name="calle" value={sucursal?.calle ?? ''} />
+						</div>
+						<div class="campo">
+							<label for="numero">Número</label>
+							<input id="numero" name="numero" value={sucursal?.numero ?? ''} />
+						</div>
+					</div>
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="colonia">Colonia</label>
+							<input id="colonia" name="colonia" value={sucursal?.colonia ?? ''} />
+						</div>
+						<div class="campo">
+							<label for="codigo_postal">Código postal</label>
+							<input id="codigo_postal" name="codigo_postal" maxlength="5" value={sucursal?.codigo_postal ?? ''} />
+						</div>
+					</div>
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="municipio">Municipio</label>
+							<input id="municipio" name="municipio" value={sucursal?.municipio ?? ''} />
+						</div>
+						<div class="campo">
+							<label for="estado">Estado</label>
+							<input id="estado" name="estado" value={sucursal?.estado ?? ''} />
+						</div>
+					</div>
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="telefono">Teléfono</label>
+							<input id="telefono" name="telefono" type="tel" value={sucursal?.telefono ?? ''} />
+						</div>
+						<div class="campo">
+							<label for="correo">Correo</label>
+							<input id="correo" name="correo" type="email" value={sucursal?.correo ?? ''} />
+						</div>
+					</div>
+
+					<div class="campo">
+						<label for="horario">Horario de atención</label>
+						<input id="horario" name="horario" value={sucursal?.horario ?? ''} placeholder="Lunes a viernes 9:00 - 17:00" />
+					</div>
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="latitud">Latitud</label>
+							<input id="latitud" name="latitud" type="number" step="0.0000001" value={sucursal?.latitud ?? ''} />
+						</div>
+						<div class="campo">
+							<label for="longitud">Longitud</label>
+							<input id="longitud" name="longitud" type="number" step="0.0000001" value={sucursal?.longitud ?? ''} />
+						</div>
+					</div>
+
+					<div class="campo">
+						<label for="orden">Orden</label>
+						<input id="orden" name="orden" type="number" value={sucursal?.orden ?? 0} class="max-w-32" />
+					</div>
+
+					<div class="mb-6 flex flex-wrap gap-6">
+						<label class="flex items-center gap-2 text-sm">
+							<input type="checkbox" name="es_matriz" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={sucursal?.es_matriz ?? false} />
+							Es la matriz
+						</label>
+						<label class="flex items-center gap-2 text-sm">
+							<input type="checkbox" name="activa" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={sucursal?.activa ?? true} />
+							Activa y visible
+						</label>
+					</div>
+
+					<div class="flex gap-2">
+						<button type="submit" class="btn btn--primario">Guardar</button>
+						<a href="/admin/sucursales" class="btn btn--fantasma">Cancelar</a>
+					</div>
+				</form>
+			</section>
+		)
+	}
+
+	<section class="panel">
+		<div class="tabla-scroll">
+			<table class="tabla-datos">
+				<thead>
+					<tr>
+						<th>Clave</th>
+						<th>Sucursal</th>
+						<th>Dirección</th>
+						<th>Contacto</th>
+						<th>Horario</th>
+						<th>Estado</th>
+						<th />
+					</tr>
+				</thead>
+				<tbody>
+					{
+						(sucursales ?? []).map((s) => (
+							<tr>
+								<td class="font-mono text-xs">{s.clave}</td>
+								<td>
+									<span class="font-medium">{s.nombre}</span>
+									{s.es_matriz && <span class="estado estado--aprobado ml-2">Matriz</span>}
+								</td>
+								<td class="text-xs">
+									{[s.calle, s.numero, s.colonia].filter(Boolean).join(' ')}
+									<span class="block text-neutral-500">
+										{[s.municipio, s.estado, s.codigo_postal].filter(Boolean).join(', ')}
+									</span>
+								</td>
+								<td class="text-xs">
+									{s.telefono ?? '—'}
+									{s.correo && <span class="block text-neutral-500">{s.correo}</span>}
+								</td>
+								<td class="max-w-48 text-xs">{s.horario ?? '—'}</td>
+								<td>
+									<span class={`estado estado--${s.activa ? 'activo' : 'inactivo'}`}>
+										{s.activa ? 'Activa' : 'Cerrada'}
+									</span>
+								</td>
+								<td>
+									<a href={`?editar=${s.id}`}>Editar</a>
+								</td>
+							</tr>
+						))
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+</LayoutAdmin>

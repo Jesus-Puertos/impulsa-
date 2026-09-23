@@ -15,6 +15,7 @@ import Row from './Row.astro'
 import Col from './Col.astro'
 import DecorationBorder from './DecorationBorder.astro'
 import SectionSpacer from './SectionSpacer.astro'
+import MarcaImpulsa from './MarcaImpulsa.astro'
 
 // Content
 // - Data
@@ -29,26 +30,7 @@ const { logo, footerAbout, footerColumns, copyright } = await getFooterNavigatio
 			<!-- Logo -->
 			<Col span="4" classes="flex justify-center items-center ">
 				<div class="footer__logo">
-					{
-						logo?.src && (
-							<a href={`/`}>
-								<img
-									src={logo.src}
-									alt={logo.alt}
-									width="426"
-									height="426"
-									class="block dark:hidden"
-								/>
-								<img
-									src={logo.srcDark}
-									alt={logo.alt}
-									width="426"
-									height="426"
-									class="hidden dark:block"
-								/>
-							</a>
-						)
-					}
+					<MarcaImpulsa tamano="lg" />
 				</div>
 			</Col>
 			<!-- Content -->

@@ -1,0 +1,177 @@
+---
+// Blog - Listado de artículos
+// ------------
+// Lee de `entradas_blog`, la tabla que administra el CMS en /admin/contenido.
+// Es SSR para que publicar un artículo no exija volver a desplegar el sitio.
+
+export const prerender = false
+
+import Layout from '../../layouts/Layout.astro'
+import Section from '../../components/ui/Section.astro'
+import Row from '../../components/ui/Row.astro'
+import Col from '../../components/ui/Col.astro'
+import { clienteServidor } from '../../lib/supabase/server'
+import { fecha } from '../../lib/formato'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+
+const params = Astro.url.searchParams
+const categoria = params.get('categoria') ?? ''
+const pagina = Math.max(1, Number(params.get('p') ?? 1))
+const POR_PAGINA = 9
+
+let consulta = supabase
+	.from('entradas_blog')
+	.select('slug, titulo, resumen, categoria, publicado_en, minutos_lectura, destacado, imagen_portada', {
+		count: 'exact'
+	})
+	.eq('estado', 'publicado')
+	.order('publicado_en', { ascending: false })
+
+if (categoria) consulta = consulta.eq('categoria', categoria)
+
+const desde = (pagina - 1) * POR_PAGINA
+const { data: entradas, count } = await consulta.range(desde, desde + POR_PAGINA - 1)
+
+const paginas = Math.ceil((count ?? 0) / POR_PAGINA)
+
+// Las categorías se derivan de lo publicado, no de una lista fija: así el
+// filtro siempre refleja lo que hay.
+const { data: todas } = await supabase
+	.from('entradas_blog')
+	.select('categoria')
+	.eq('estado', 'publicado')
+
+const categorias = [...new Set((todas ?? []).map((e) => e.categoria))].sort()
+
+function urlCon(cambios: Record<string, string>) {
+	const nueva = new URLSearchParams(params)
+	for (const [k, v] of Object.entries(cambios)) {
+		if (v) nueva.set(k, v)
+		else nueva.delete(k)
+	}
+	const cadena = nueva.toString()
+	return cadena ? `/blog?${cadena}` : '/blog'
+}
+---
+
+<Layout
+	title="Educación financiera | Cooperativa Impulsa"
+	description="Artículos sobre crédito, ahorro y cooperativismo escritos para entenderse. Aprende antes de firmar."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" classes="py-16 lg:py-24">
+				<span class="h5">Educación financiera</span>
+				<h1>Aprende antes de firmar</h1>
+				<p class="text-lead">
+					Escribimos para que entiendas cómo funciona el dinero, no para venderte un producto.
+					Cuando algo te conviene, lo decimos; cuando no, también.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	{/* Filtros */}
+	{
+		categorias.length > 1 && (
+			<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+				<Row classes="py-5" style="transparent" decorationBorder="none">
+					<Col span="12" style="transparent">
+						<nav class="flex flex-wrap gap-1.5" aria-label="Categorías">
+							<a
+								href="/blog"
+								class:list={['btn btn--sm no-underline!', !categoria ? 'btn--primario' : 'btn--contorno']}
+							>
+								Todos
+							</a>
+							{categorias.map((c) => (
+								<a
+									href={urlCon({ categoria: c, p: '' })}
+									class:list={[
+										'btn btn--sm no-underline!',
+										categoria === c ? 'btn--primario' : 'btn--contorno'
+									]}
+								>
+									{c}
+								</a>
+							))}
+						</nav>
+					</Col>
+				</Row>
+			</Section>
+		)
+	}
+
+	<Section>
+		<Row classes="py-16" style="transparent" decorationBorder="none">
+			{
+				entradas && entradas.length > 0 ? (
+					entradas.map((e) => (
+						<Col
+							span="4"
+							spanTablet="6"
+							classes="p-6 border border-neutral-200 dark:border-neutral-800 flex flex-col"
+						>
+							<div class="mb-3 flex items-center gap-2">
+								<span class="h5 mb-0!">{e.categoria}</span>
+								{e.destacado && <span class="estado estado--aprobado">Destacado</span>}
+							</div>
+
+							<h2 class="mb-3 text-xl">
+								<a
+									href={`/blog/${e.slug}`}
+									class="text-neutral-950! hover:text-primary-700! dark:text-white! dark:hover:text-primary-300! no-underline"
+								>
+									{e.titulo}
+								</a>
+							</h2>
+
+							<p class="mb-4 flex-1 text-sm text-neutral-500 dark:text-neutral-400">{e.resumen}</p>
+
+							<p class="small mb-0">
+								{fecha(e.publicado_en)}
+								{e.minutos_lectura && ` · ${e.minutos_lectura} min de lectura`}
+							</p>
+						</Col>
+					))
+				) : (
+					<Col span="8" start="3" align="center" style="transparent">
+						<p>
+							{categoria
+								? `Todavía no hay artículos en «${categoria}».`
+								: 'Todavía no hay artículos publicados.'}
+						</p>
+					</Col>
+				)
+			}
+		</Row>
+
+		{/* Paginación */}
+		{
+			paginas > 1 && (
+				<Row style="transparent" decorationBorder="none">
+					<Col span="12" style="transparent" classes="pb-16">
+						<nav class="flex items-center justify-between gap-4" aria-label="Paginación">
+							<span class="text-sm text-neutral-500 dark:text-neutral-400">
+								Página {pagina} de {paginas}
+							</span>
+							<div class="flex gap-2">
+								{pagina > 1 && (
+									<a href={urlCon({ p: String(pagina - 1) })} class="btn btn--contorno btn--sm">
+										← Anteriores
+									</a>
+								)}
+								{pagina < paginas && (
+									<a href={urlCon({ p: String(pagina + 1) })} class="btn btn--contorno btn--sm">
+										Siguientes →
+									</a>
+								)}
+							</div>
+						</nav>
+					</Col>
+				</Row>
+			)
+		}
+	</Section>
+</Layout>

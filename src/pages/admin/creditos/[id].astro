@@ -1,0 +1,397 @@
+---
+// Panel - Detalle de crédito y registro de pagos
+// ------------
+// El registro de pagos llama a `registrar_pago`, que aplica el dinero a las
+// cuotas más antiguas dentro de una transacción. Nunca se editan saldos a mano.
+
+export const prerender = false
+
+import LayoutAdmin from '../../../layouts/LayoutAdmin.astro'
+import Renglon from '../../../components/impulsa/Renglon.astro'
+import {
+	pesos,
+	porcentaje,
+	fecha,
+	fechaHora,
+	ETIQUETAS_ESTADO_CREDITO,
+	ETIQUETAS_ESTADO_CUOTA,
+	ETIQUETAS_METODO_PAGO
+} from '../../../lib/formato'
+import { ETIQUETAS_PERIODICIDAD } from '../../../lib/credito'
+import { alcanzaRol } from '../../../lib/auth'
+import type { MetodoPago } from '../../../lib/supabase/database.types'
+
+const { supabase, perfil } = Astro.locals
+const { id } = Astro.params
+
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const accion = String(datos.get('accion') ?? '')
+
+	if (accion === 'registrar_pago') {
+		if (!alcanzaRol(perfil!.rol, 'cajero')) {
+			mensaje = { tipo: 'error', texto: 'Tu rol no permite registrar pagos.' }
+		} else {
+			const monto = Number(datos.get('monto'))
+
+			if (!monto || monto <= 0) {
+				mensaje = { tipo: 'error', texto: 'El monto del pago debe ser mayor que cero.' }
+			} else {
+				const { error } = await supabase.rpc('registrar_pago', {
+					p_credito_id: id!,
+					p_monto: monto,
+					p_metodo: String(datos.get('metodo') || 'efectivo') as MetodoPago,
+					p_referencia: String(datos.get('referencia') ?? '') || undefined,
+					p_fecha: String(datos.get('fecha_pago') || new Date().toISOString().slice(0, 10)),
+					p_notas: String(datos.get('notas') ?? '') || undefined
+				})
+
+				mensaje = error
+					? { tipo: 'error', texto: `No se pudo registrar el pago: ${error.message}` }
+					: { tipo: 'exito', texto: `Pago de ${pesos(monto)} registrado y aplicado.` }
+			}
+		}
+	} else if (accion === 'cancelar_pago') {
+		if (!alcanzaRol(perfil!.rol, 'gerente')) {
+			mensaje = { tipo: 'error', texto: 'Solo gerencia puede cancelar un pago.' }
+		} else {
+			const motivo = String(datos.get('motivo_cancelacion') ?? '').trim()
+
+			if (!motivo) {
+				mensaje = { tipo: 'error', texto: 'Indica el motivo de la cancelación.' }
+			} else {
+				const { error } = await supabase
+					.from('pagos')
+					.update({
+						cancelado: true,
+						cancelado_por: perfil!.id,
+						cancelado_en: new Date().toISOString(),
+						motivo_cancelacion: motivo
+					})
+					.eq('id', String(datos.get('pago_id')))
+
+				mensaje = error
+					? { tipo: 'error', texto: 'No se pudo cancelar el pago.' }
+					: {
+							tipo: 'exito',
+							texto:
+								'Pago marcado como cancelado. Los saldos NO se recalcularon automáticamente: ' +
+								'registra el ajuste correspondiente con contabilidad.'
+						}
+			}
+		}
+	} else if (accion === 'actualizar_mora') {
+		const { error } = await supabase.rpc('actualizar_mora', {})
+		mensaje = error
+			? { tipo: 'error', texto: `No se pudo recalcular la mora: ${error.message}` }
+			: { tipo: 'exito', texto: 'Mora recalculada al día de hoy.' }
+	}
+}
+
+const { data: credito } = await supabase
+	.from('v_creditos_detalle')
+	.select('*')
+	.eq('id', id!)
+	.maybeSingle()
+
+if (!credito) return Astro.redirect('/admin/creditos')
+
+const [{ data: cuotas }, { data: pagos }] = await Promise.all([
+	supabase.from('amortizaciones').select('*').eq('credito_id', id!).order('numero_cuota'),
+	supabase.from('pagos').select('*').eq('credito_id', id!).order('fecha_pago', { ascending: false })
+])
+
+const puedeCobrar = alcanzaRol(perfil!.rol, 'cajero')
+const puedeCancelar = alcanzaRol(perfil!.rol, 'gerente')
+const hoy = new Date().toISOString().slice(0, 10)
+
+// Sugerencia de cobro: lo que se debe hasta hoy, no solo la próxima cuota.
+const adeudoVencido = (cuotas ?? [])
+	.filter((c) => c.fecha_vencimiento <= hoy && c.estado !== 'pagada')
+	.reduce(
+		(s, c) =>
+			s +
+			(c.capital - c.capital_pagado) +
+			(c.interes - c.interes_pagado) +
+			(c.iva_interes - c.iva_pagado) +
+			(c.moratorio_generado - c.moratorio_pagado),
+		0
+	)
+
+const METODOS: MetodoPago[] = [
+	'efectivo',
+	'transferencia',
+	'deposito',
+	'domiciliacion',
+	'descuento_nomina'
+]
+---
+
+<LayoutAdmin title={`Crédito ${credito.folio} | Panel Impulsa`} activo="creditos">
+	<nav class="mb-4 text-sm">
+		<a href="/admin/creditos">← Volver a la cartera</a>
+	</nav>
+
+	<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Crédito {credito.folio}</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				<a href={`/admin/socios/${credito.socio_id}`}>{credito.socio_nombre}</a> ·
+				{credito.producto_nombre} · Desembolsado el {fecha(credito.fecha_desembolso)}
+			</p>
+		</div>
+		<span class={`estado estado--${credito.estado}`}>
+			{ETIQUETAS_ESTADO_CREDITO[credito.estado]}
+		</span>
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	{
+		credito.dias_mora > 0 && (
+			<div class="aviso aviso--error">
+				<p>
+					{credito.dias_mora} días de atraso · {pesos(credito.saldo_moratorio)} de intereses
+					moratorios · Contacto: {credito.socio_telefono ?? 'sin teléfono registrado'}
+				</p>
+			</div>
+		)
+	}
+
+	<section class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+		<div class="panel">
+			<p class="kpi__valor">{pesos(credito.saldo_total)}</p>
+			<p class="kpi__etiqueta">Saldo total</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{pesos(adeudoVencido)}</p>
+			<p class="kpi__etiqueta">Adeudo exigible hoy</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{pesos(credito.total_pagado)}</p>
+			<p class="kpi__etiqueta">Total recuperado</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{porcentaje(credito.porcentaje_amortizado)}</p>
+			<p class="kpi__etiqueta">Amortizado</p>
+		</div>
+	</section>
+
+	<div class="grid gap-6 xl:grid-cols-3">
+		{/* Registrar pago */}
+		{
+			puedeCobrar && ['vigente', 'atrasado'].includes(credito.estado) && (
+				<section class="panel xl:col-span-1">
+					<h2 class="panel__titulo">Registrar pago</h2>
+					<form method="POST">
+						<input type="hidden" name="accion" value="registrar_pago" />
+
+						<div class="campo">
+							<label for="monto">Monto recibido</label>
+							<input
+								id="monto"
+								name="monto"
+								type="number"
+								min="0.01"
+								step="0.01"
+								value={adeudoVencido > 0 ? adeudoVencido.toFixed(2) : credito.pago_periodico}
+								required
+							/>
+							<span class="campo__ayuda">
+								Sugerido: {pesos(adeudoVencido > 0 ? adeudoVencido : credito.pago_periodico)}
+							</span>
+						</div>
+
+						<div class="campo">
+							<label for="metodo">Forma de pago</label>
+							<select id="metodo" name="metodo">
+								{METODOS.map((m) => (
+									<option value={m}>{ETIQUETAS_METODO_PAGO[m]}</option>
+								))}
+							</select>
+						</div>
+
+						<div class="campo">
+							<label for="fecha_pago">Fecha</label>
+							<input id="fecha_pago" name="fecha_pago" type="date" value={hoy} required />
+						</div>
+
+						<div class="campo">
+							<label for="referencia">Referencia</label>
+							<input id="referencia" name="referencia" placeholder="Folio bancario o de caja" />
+						</div>
+
+						<div class="campo">
+							<label for="notas">Notas</label>
+							<textarea id="notas" name="notas" rows="2" />
+						</div>
+
+						<button type="submit" class="btn btn--primario w-full">
+							Registrar y aplicar
+						</button>
+						<p class="small mt-3 mb-0">
+							El pago se aplica a las cuotas más antiguas: primero moratorios, luego intereses y
+							al final capital.
+						</p>
+					</form>
+				</section>
+			)
+		}
+
+		{/* Condiciones */}
+		<section class="panel">
+			<h2 class="panel__titulo">Condiciones</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Monto original" valor={pesos(credito.monto_principal)} />
+				<Renglon etiqueta="Tasa ordinaria" valor={porcentaje(credito.tasa_anual)} />
+				<Renglon
+					etiqueta="Plazo"
+					valor={`${credito.plazo_periodos} · ${ETIQUETAS_PERIODICIDAD[credito.periodicidad]}`}
+				/>
+				<Renglon etiqueta="Pago periódico" valor={pesos(credito.pago_periodico)} />
+				<Renglon etiqueta="Vencimiento" valor={fecha(credito.fecha_vencimiento)} />
+				<Renglon etiqueta="Cuotas pagadas" valor={`${credito.cuotas_pagadas} de ${credito.plazo_periodos}`} />
+			</dl>
+		</section>
+
+		{/* Saldos */}
+		<section class="panel">
+			<h2 class="panel__titulo">Desglose de saldo</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Capital insoluto" valor={pesos(credito.saldo_capital)} />
+				<Renglon etiqueta="Intereses" valor={pesos(credito.saldo_interes)} />
+				<Renglon etiqueta="Moratorios" valor={pesos(credito.saldo_moratorio)} />
+				<div class="border-t border-neutral-200 pt-2.5 dark:border-neutral-700">
+					<Renglon etiqueta="Liquidación total" valor={pesos(credito.saldo_total)} fuerte />
+				</div>
+			</dl>
+
+			<form method="POST" class="mt-4">
+				<input type="hidden" name="accion" value="actualizar_mora" />
+				<button type="submit" class="btn btn--contorno btn--sm w-full">
+					Recalcular mora
+				</button>
+			</form>
+		</section>
+	</div>
+
+	{/* Amortización */}
+	<section class="panel mt-6">
+		<h2 class="panel__titulo">Tabla de amortización</h2>
+		<div class="tabla-scroll max-h-128 overflow-y-auto">
+			<table class="tabla-datos">
+				<thead>
+					<tr>
+						<th>#</th>
+						<th>Vence</th>
+						<th class="num">Capital</th>
+						<th class="num">Interés</th>
+						<th class="num">Cuota</th>
+						<th class="num">Pagado</th>
+						<th class="num">Moratorio</th>
+						<th>Situación</th>
+					</tr>
+				</thead>
+				<tbody>
+					{
+						(cuotas ?? []).map((c) => {
+							const pagado = c.capital_pagado + c.interes_pagado + c.iva_pagado
+							const vencida = c.estado === 'vencida' || (c.fecha_vencimiento < hoy && c.estado !== 'pagada')
+							return (
+								<tr class:list={[c.estado === 'pagada' && 'opacity-60', vencida && 'bg-red-50 dark:bg-red-950/20']}>
+									<td>{c.numero_cuota}</td>
+									<td>{fecha(c.fecha_vencimiento)}</td>
+									<td class="num">{pesos(c.capital)}</td>
+									<td class="num">{pesos(c.interes)}</td>
+									<td class="num font-medium">{pesos(c.pago_programado)}</td>
+									<td class="num">{pagado > 0 ? pesos(pagado) : '—'}</td>
+									<td class="num">
+										{c.moratorio_generado > 0 ? pesos(c.moratorio_generado - c.moratorio_pagado) : '—'}
+									</td>
+									<td>
+										<span class={`estado estado--${c.estado}`}>
+											{ETIQUETAS_ESTADO_CUOTA[c.estado]}
+										</span>
+									</td>
+								</tr>
+							)
+						})
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	{/* Pagos */}
+	<section class="panel mt-6">
+		<h2 class="panel__titulo">Pagos registrados</h2>
+
+		{
+			pagos && pagos.length > 0 ? (
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Folio</th>
+								<th>Fecha</th>
+								<th>Método</th>
+								<th>Referencia</th>
+								<th class="num">Capital</th>
+								<th class="num">Interés</th>
+								<th class="num">Moratorio</th>
+								<th class="num">Total</th>
+								{puedeCancelar && <th />}
+							</tr>
+						</thead>
+						<tbody>
+							{pagos.map((p) => (
+								<tr class={p.cancelado ? 'opacity-50 line-through' : ''}>
+									<td class="text-xs">{p.folio}</td>
+									<td>{fecha(p.fecha_pago)}</td>
+									<td class="text-xs">{ETIQUETAS_METODO_PAGO[p.metodo]}</td>
+									<td class="text-xs">{p.referencia ?? '—'}</td>
+									<td class="num">{pesos(p.capital_aplicado)}</td>
+									<td class="num">{pesos(p.interes_aplicado + p.iva_aplicado)}</td>
+									<td class="num">{pesos(p.moratorio_aplicado)}</td>
+									<td class="num font-medium">{pesos(p.monto)}</td>
+									{puedeCancelar && (
+										<td>
+											{!p.cancelado && (
+												<form method="POST" class="flex items-center gap-1">
+													<input type="hidden" name="accion" value="cancelar_pago" />
+													<input type="hidden" name="pago_id" value={p.id} />
+													<input
+														name="motivo_cancelacion"
+														placeholder="Motivo"
+														class="mb-0! h-8! w-28 px-2! text-xs"
+														required
+													/>
+													<button type="submit" class="btn btn--peligro btn--sm">
+														Cancelar
+													</button>
+												</form>
+											)}
+										</td>
+									)}
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+					Todavía no se registran pagos de este crédito.
+				</p>
+			)
+		}
+		<p class="small mt-4 mb-0">Última actualización: {fechaHora(credito.fecha_desembolso)}</p>
+	</section>
+</LayoutAdmin>

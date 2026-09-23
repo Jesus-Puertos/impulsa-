@@ -1,0 +1,180 @@
+---
+// Catálogo público de créditos
+export const prerender = false
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import Button from '../components/ui/Button.astro'
+import { clienteServidor } from '../lib/supabase/server'
+import { pesos, porcentaje } from '../lib/formato'
+import { ETIQUETAS_PERIODO, ETIQUETAS_PERIODICIDAD, calcularPagoPeriodico } from '../lib/credito'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+
+const { data: productos } = await supabase
+	.from('productos_credito')
+	.select('*')
+	.eq('activo', true)
+	.order('orden')
+---
+
+<Layout
+	title="Créditos | Cooperativa Impulsa"
+	description="Crédito personal, productivo, agrícola, emergente y para vivienda. Conoce montos, plazos, tasas y requisitos de cada producto."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" classes="py-16 lg:py-24">
+				<span class="h5">Créditos</span>
+				<h1>Financiamiento con condiciones claras</h1>
+				<p class="text-lead">
+					Cinco productos pensados para lo que de verdad se necesita en la región: capital de
+					trabajo, ciclo agrícola, emergencias, vivienda y gastos familiares.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	{
+		productos && productos.length > 0 ? (
+			productos.map((p, i) => {
+				// Ejemplo representativo: monto medio, plazo medio. Da una referencia
+				// concreta sin obligar a abrir el simulador.
+				const montoEjemplo =
+					Math.round((p.monto_minimo + (p.monto_maximo - p.monto_minimo) / 3) / 500) * 500
+				const plazoEjemplo = Math.round(
+					(p.plazo_minimo_periodos + p.plazo_maximo_periodos) / 2
+				)
+				const pagoEjemplo = calcularPagoPeriodico(
+					montoEjemplo,
+					p.tasa_anual,
+					plazoEjemplo,
+					p.periodicidad
+				)
+
+				return (
+					<Section decorationBorder={i === productos.length - 1 ? 'none' : 'bottom'} id={p.clave}>
+						<Row classes="py-16">
+							<Col span="7" style="transparent">
+								{p.destacado && <span class="estado estado--aprobado mb-3">Más solicitado</span>}
+								<h2>{p.nombre}</h2>
+								<p class="text-lead">{p.descripcion}</p>
+								{p.descripcion_larga && <p>{p.descripcion_larga}</p>}
+
+								{p.requisitos.length > 0 && (
+									<>
+										<h3 class="mt-8 text-lg">Requisitos</h3>
+										<ul>
+											{p.requisitos.map((r) => (
+												<li>{r}</li>
+											))}
+										</ul>
+									</>
+								)}
+
+								{p.destinos.length > 0 && (
+									<>
+										<h3 class="mt-6 text-lg">Destinos permitidos</h3>
+										<p class="mb-0 flex flex-wrap gap-2">
+											{p.destinos.map((d) => (
+												<span class="estado estado--borrador">{d}</span>
+											))}
+										</p>
+									</>
+								)}
+							</Col>
+
+							<Col span="4" start="9" style="transparent">
+								<div class="panel sticky top-24">
+									<h3 class="panel__titulo">Condiciones</h3>
+									<dl class="mb-5 space-y-2.5 text-sm">
+										<div class="flex justify-between gap-3">
+											<dt class="text-neutral-500 dark:text-neutral-400">Monto</dt>
+											<dd class="text-right tabular-nums">
+												{pesos(p.monto_minimo)} a<br />
+												{pesos(p.monto_maximo)}
+											</dd>
+										</div>
+										<div class="flex justify-between gap-3">
+											<dt class="text-neutral-500 dark:text-neutral-400">Plazo</dt>
+											<dd class="tabular-nums">
+												{p.plazo_minimo_periodos} a {p.plazo_maximo_periodos}{' '}
+												{ETIQUETAS_PERIODO[p.periodicidad]}
+											</dd>
+										</div>
+										<div class="flex justify-between gap-3">
+											<dt class="text-neutral-500 dark:text-neutral-400">Tasa anual</dt>
+											<dd class="text-primary-700 dark:text-primary-300 font-semibold tabular-nums">
+												{porcentaje(p.tasa_anual)}
+											</dd>
+										</div>
+										<div class="flex justify-between gap-3">
+											<dt class="text-neutral-500 dark:text-neutral-400">Tasa moratoria</dt>
+											<dd class="tabular-nums">{porcentaje(p.tasa_moratoria_anual)}</dd>
+										</div>
+										<div class="flex justify-between gap-3">
+											<dt class="text-neutral-500 dark:text-neutral-400">Comisión apertura</dt>
+											<dd class="tabular-nums">
+												{p.comision_apertura_pct > 0 ? porcentaje(p.comision_apertura_pct) : 'Sin comisión'}
+											</dd>
+										</div>
+										<div class="flex justify-between gap-3">
+											<dt class="text-neutral-500 dark:text-neutral-400">Pagos</dt>
+											<dd>{ETIQUETAS_PERIODICIDAD[p.periodicidad]}</dd>
+										</div>
+										<div class="flex justify-between gap-3">
+											<dt class="text-neutral-500 dark:text-neutral-400">Aval</dt>
+											<dd>{p.requiere_aval ? 'Requerido' : 'No requerido'}</dd>
+										</div>
+										<div class="flex justify-between gap-3">
+											<dt class="text-neutral-500 dark:text-neutral-400">Garantía</dt>
+											<dd>{p.requiere_garantia ? 'Requerida' : 'No requerida'}</dd>
+										</div>
+									</dl>
+
+									<div class="mb-5 rounded-sm bg-neutral-50 p-4 dark:bg-neutral-800">
+										<p class="mb-1 text-xs tracking-wider text-neutral-500 uppercase">Ejemplo</p>
+										<p class="mb-0 text-sm">
+											{pesos(montoEjemplo)} a {plazoEjemplo}{' '}
+											{ETIQUETAS_PERIODO[p.periodicidad]} ={' '}
+											<strong class="text-base">{pesos(pagoEjemplo)}</strong> por pago.
+										</p>
+									</div>
+
+									<a href={`/simulador?producto=${p.clave}`} class="btn btn--primario w-full">
+										Simular este crédito
+									</a>
+								</div>
+							</Col>
+						</Row>
+					</Section>
+				)
+			})
+		) : (
+			<Section>
+				<Row classes="py-16">
+					<Col span="8" start="3" align="center">
+						<p>No hay productos publicados en este momento.</p>
+					</Col>
+				</Row>
+			</Section>
+		)
+	}
+
+	<Section spacerBottom={false}>
+		<Row classes="py-16">
+			<Col span="8" start="3" align="center" style="transparent">
+				<h2>Antes de decidir, haz números</h2>
+				<p class="text-lead">
+					El simulador te muestra el pago exacto, cuánto son intereses y el CAT. Sin registrarte.
+				</p>
+				<div class="mt-8 flex flex-wrap justify-center gap-3">
+					<Button link="/simulador" size="lg">Ir al simulador</Button>
+					<Button link="/preguntas-frecuentes" size="lg" style="neutral">Preguntas frecuentes</Button>
+				</div>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

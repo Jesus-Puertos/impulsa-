@@ -1,0 +1,166 @@
+---
+// Acceso al portal
+// ------------
+// El formulario hace POST a esta misma ruta y se procesa en el servidor, de
+// modo que funciona aunque el navegador no ejecute JavaScript. Las cookies de
+// sesión las escribe el cliente de Supabase a través de `Astro.cookies`.
+
+export const prerender = false
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import MarcaImpulsa from '../components/ui/MarcaImpulsa.astro'
+import { clienteServidor } from '../lib/supabase/server'
+import { esPersonal } from '../lib/auth'
+
+let error: string | null = null
+let correoPrevio = ''
+
+const destinoSolicitado = Astro.url.searchParams.get('destino')
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const correo = String(datos.get('correo') ?? '').trim()
+	const contrasena = String(datos.get('contrasena') ?? '')
+	correoPrevio = correo
+
+	if (!correo || !contrasena) {
+		error = 'Escribe tu correo y tu contraseña.'
+	} else {
+		const supabase = clienteServidor(Astro.cookies)
+		const { data, error: errorAuth } = await supabase.auth.signInWithPassword({
+			email: correo,
+			password: contrasena
+		})
+
+		if (errorAuth) {
+			// No se distingue entre "correo inexistente" y "contraseña incorrecta":
+			// hacerlo permitiría averiguar qué correos están registrados.
+			error =
+				errorAuth.message === 'Email not confirmed'
+					? 'Tu correo aún no está confirmado. Revisa tu bandeja de entrada.'
+					: 'Correo o contraseña incorrectos.'
+		} else if (data.user) {
+			const { data: perfil } = await supabase
+				.from('perfiles')
+				.select('rol, activo')
+				.eq('id', data.user.id)
+				.maybeSingle()
+
+			if (perfil && !perfil.activo) {
+				await supabase.auth.signOut()
+				error = 'Tu cuenta está desactivada. Comunícate con tu sucursal.'
+			} else {
+				const destino =
+					destinoSolicitado && destinoSolicitado.startsWith('/')
+						? destinoSolicitado
+						: perfil && esPersonal(perfil.rol)
+							? '/admin'
+							: '/portal'
+				return Astro.redirect(destino, 303)
+			}
+		}
+	}
+}
+
+const avisoUrl = Astro.url.searchParams.get('error')
+const mensajeUrl =
+	avisoUrl === 'perfil_inactivo'
+		? 'No encontramos tu perfil o está desactivado. Comunícate con tu sucursal.'
+		: avisoUrl === 'sesion_expirada'
+			? 'Tu sesión expiró por inactividad. Vuelve a entrar.'
+			: null
+
+const registrado = Astro.url.searchParams.get('registro') === 'ok'
+---
+
+<Layout
+	title="Acceder | Cooperativa Impulsa"
+	description="Entra al portal del socio para consultar tus créditos, tu ahorro y tus solicitudes."
+	navigation="none"
+	footer="none"
+>
+	<Section spacerTop={false} spacerBottom={false}>
+		<Row classes="min-h-screen items-center">
+			<Col span="5" start="5" classes="py-16">
+				<div class="mb-8 flex justify-center">
+					<MarcaImpulsa tamano="lg" />
+				</div>
+
+				<div class="panel">
+					<h1 class="h3 mb-1 text-center">Bienvenido de vuelta</h1>
+					<p class="mb-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
+						Entra para ver tus créditos, tu ahorro y tus trámites.
+					</p>
+
+					{
+						registrado && (
+							<div class="aviso aviso--exito">
+								<p>
+									Tu cuenta se creó correctamente. Si te pedimos confirmar tu correo, revisa tu
+									bandeja de entrada antes de entrar.
+								</p>
+							</div>
+						)
+					}
+					{
+						mensajeUrl && (
+							<div class="aviso aviso--alerta">
+								<p>{mensajeUrl}</p>
+							</div>
+						)
+					}
+					{
+						error && (
+							<div class="aviso aviso--error" role="alert">
+								<p>{error}</p>
+							</div>
+						)
+					}
+
+					<form method="POST" novalidate>
+						<div class="campo">
+							<label for="correo">Correo electrónico</label>
+							<input
+								id="correo"
+								name="correo"
+								type="email"
+								autocomplete="email"
+								required
+								placeholder="nombre@dominio.com"
+								value={correoPrevio}
+							/>
+						</div>
+
+						<div class="campo">
+							<label for="contrasena">Contraseña</label>
+							<input
+								id="contrasena"
+								name="contrasena"
+								type="password"
+								autocomplete="current-password"
+								required
+								placeholder="Tu contraseña"
+							/>
+							<a href="/recuperar" class="campo__ayuda text-primary-700! dark:text-primary-300!">
+								¿Olvidaste tu contraseña?
+							</a>
+						</div>
+
+						<button type="submit" class="btn btn--primario w-full">Entrar</button>
+					</form>
+
+					<p class="mt-6 mb-0 text-center text-sm text-neutral-500 dark:text-neutral-400">
+						¿Todavía no eres socio? <a href="/registro">Regístrate aquí</a>
+					</p>
+				</div>
+
+				<p class="mt-6 text-center">
+					<a href="/" class="small">← Volver al sitio</a>
+				</p>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

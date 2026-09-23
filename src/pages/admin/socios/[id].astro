@@ -1,0 +1,477 @@
+---
+// Panel - Expediente de un socio
+// ------------
+// Concentra todo lo que el personal necesita para dictaminar: identidad,
+// domicilio, capacidad económica, documentos, referencias y su posición
+// consolidada de crédito y ahorro. Las acciones se procesan por POST a esta
+// misma ruta.
+
+export const prerender = false
+
+import LayoutAdmin from '../../../layouts/LayoutAdmin.astro'
+import Renglon from '../../../components/impulsa/Renglon.astro'
+import VisorDocumentos from '../../../components/impulsa/VisorDocumentos'
+import {
+	pesos,
+	fecha,
+	fechaHora,
+	ETIQUETAS_ESTADO_SOCIO,
+	ETIQUETAS_ESTADO_CREDITO
+} from '../../../lib/formato'
+import { nombreCompleto, alcanzaRol } from '../../../lib/auth'
+import { calcularEdad } from '../../../lib/validaciones'
+import type { EstadoSocio, Socio } from '../../../lib/supabase/database.types'
+
+const { supabase, perfil } = Astro.locals
+const { id } = Astro.params
+
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+// --- Acciones -----------------------------------------------------------------
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const accion = String(datos.get('accion') ?? '')
+
+	if (!alcanzaRol(perfil!.rol, 'analista') && accion !== 'guardar_notas') {
+		mensaje = { tipo: 'error', texto: 'Tu rol no permite dictaminar expedientes.' }
+	} else if (accion === 'cambiar_estado') {
+		const nuevo = String(datos.get('estado')) as EstadoSocio
+		const cambios: Partial<Socio> = { estado: nuevo }
+
+		if (nuevo === 'baja') {
+			cambios.fecha_baja = new Date().toISOString().slice(0, 10)
+			cambios.motivo_baja = String(datos.get('motivo') ?? 'Sin motivo especificado')
+		}
+
+		const { error } = await supabase.from('socios').update(cambios).eq('id', id!)
+
+		if (error) {
+			mensaje = { tipo: 'error', texto: `No se pudo actualizar: ${error.message}` }
+		} else {
+			mensaje = {
+				tipo: 'exito',
+				texto: `El expediente pasó a «${ETIQUETAS_ESTADO_SOCIO[nuevo]}».`
+			}
+
+			// El socio se entera del dictamen por su bandeja del portal.
+			const { data: s } = await supabase.from('socios').select('perfil_id').eq('id', id!).single()
+			if (s?.perfil_id) {
+				await supabase.from('notificaciones').insert({
+					perfil_id: s.perfil_id,
+					titulo: nuevo === 'activo' ? '¡Bienvenido a la cooperativa!' : 'Tu expediente cambió',
+					mensaje:
+						nuevo === 'activo'
+							? 'Tu expediente fue aprobado. Ya puedes solicitar crédito y abrir tu cuenta de ahorro.'
+							: `Tu expediente ahora está en estado «${ETIQUETAS_ESTADO_SOCIO[nuevo]}».`,
+					tipo: nuevo === 'activo' ? 'exito' : 'info',
+					enlace: '/portal'
+				})
+			}
+		}
+	} else if (accion === 'guardar_notas') {
+		const { error } = await supabase
+			.from('socios')
+			.update({
+				notas_internas: String(datos.get('notas_internas') ?? ''),
+				score_interno: Number(datos.get('score_interno')) || null
+			})
+			.eq('id', id!)
+
+		mensaje = error
+			? { tipo: 'error', texto: 'No se pudieron guardar las notas.' }
+			: { tipo: 'exito', texto: 'Notas internas guardadas.' }
+	}
+}
+
+// --- Datos --------------------------------------------------------------------
+const { data: socio } = await supabase.from('socios').select('*').eq('id', id!).maybeSingle()
+if (!socio) return Astro.redirect('/admin/socios')
+
+const [
+	{ data: documentos },
+	{ data: referencias },
+	{ data: beneficiarios },
+	{ data: creditos },
+	{ data: cuentas },
+	{ data: solicitudes },
+	{ data: sucursal }
+] = await Promise.all([
+	supabase.from('documentos_socio').select('*').eq('socio_id', id!).order('tipo'),
+	supabase.from('referencias_socio').select('*').eq('socio_id', id!),
+	supabase.from('beneficiarios').select('*').eq('socio_id', id!),
+	supabase
+		.from('v_creditos_detalle')
+		.select('*')
+		.eq('socio_id', id!)
+		.order('fecha_desembolso', { ascending: false }),
+	supabase.from('cuentas_ahorro').select('*').eq('socio_id', id!),
+	supabase
+		.from('solicitudes_credito')
+		.select('id, folio, estado, monto_solicitado, creado_en')
+		.eq('socio_id', id!)
+		.order('creado_en', { ascending: false }),
+	socio.sucursal_id
+		? supabase.from('sucursales').select('nombre').eq('id', socio.sucursal_id).maybeSingle()
+		: Promise.resolve({ data: null })
+])
+
+const ingresoDisponible =
+	Number(socio.ingreso_mensual ?? 0) +
+	Number(socio.otros_ingresos ?? 0) -
+	Number(socio.egresos_mensuales ?? 0)
+
+const deudaTotal = (creditos ?? [])
+	.filter((c) => ['vigente', 'atrasado'].includes(c.estado))
+	.reduce((s, c) => s + Number(c.saldo_total), 0)
+
+const puedeDictaminar = alcanzaRol(perfil!.rol, 'analista')
+const docsPendientes = (documentos ?? []).filter((d) => d.estado === 'pendiente').length
+---
+
+<LayoutAdmin title={`${nombreCompleto(socio)} | Panel Impulsa`} activo="socios">
+	<nav class="mb-4 text-sm">
+		<a href="/admin/socios">← Volver al padrón</a>
+	</nav>
+
+	<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">{nombreCompleto(socio)}</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				{socio.numero_socio ?? 'Sin número de socio'} · {sucursal?.nombre ?? 'Sin sucursal'} ·
+				Registrado el {fecha(socio.creado_en)}
+			</p>
+		</div>
+		<span class={`estado estado--${socio.estado}`}>{ETIQUETAS_ESTADO_SOCIO[socio.estado]}</span>
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	{/* Acciones de dictamen */}
+	{
+		puedeDictaminar && (
+			<section class="panel mb-6">
+				<h2 class="panel__titulo">Dictamen del expediente</h2>
+
+				{docsPendientes > 0 && (
+					<div class="aviso aviso--alerta">
+						<p>
+							Hay {docsPendientes} documento(s) sin validar. Revísalos antes de aprobar el
+							expediente.
+						</p>
+					</div>
+				)}
+
+				<form method="POST" class="flex flex-wrap items-end gap-3">
+					<input type="hidden" name="accion" value="cambiar_estado" />
+					<div class="campo mb-0! w-56">
+						<label for="estado">Cambiar situación a</label>
+						<select id="estado" name="estado" required>
+							<option value="en_revision" selected={socio.estado === 'en_revision'}>
+								En revisión
+							</option>
+							<option value="activo">Activo (aprobar)</option>
+							<option value="rechazado">Rechazado</option>
+							<option value="suspendido">Suspendido</option>
+							<option value="baja">Baja</option>
+						</select>
+					</div>
+					<div class="campo mb-0! min-w-64 flex-1">
+						<label for="motivo">Motivo (obligatorio para baja o rechazo)</label>
+						<input id="motivo" name="motivo" placeholder="Ej. documentación inconsistente" />
+					</div>
+					<button type="submit" class="btn btn--primario">
+						Aplicar
+					</button>
+				</form>
+			</section>
+		)
+	}
+
+	{/* Posición consolidada */}
+	<section class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+		<div class="panel">
+			<p class="kpi__valor">{pesos(deudaTotal)}</p>
+			<p class="kpi__etiqueta">Deuda vigente</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">
+				{pesos((cuentas ?? []).reduce((s, c) => s + Number(c.saldo), 0))}
+			</p>
+			<p class="kpi__etiqueta">Ahorro</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{pesos(ingresoDisponible)}</p>
+			<p class="kpi__etiqueta">Ingreso disponible / mes</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{socio.score_interno ?? '—'}</p>
+			<p class="kpi__etiqueta">Score interno</p>
+		</div>
+	</section>
+
+	<div class="grid gap-6 xl:grid-cols-3">
+		{/* Identidad */}
+		<section class="panel">
+			<h2 class="panel__titulo">Identidad</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="CURP" valor={socio.curp} />
+				<Renglon etiqueta="RFC" valor={socio.rfc ?? '—'} />
+				<Renglon
+					etiqueta="Nacimiento"
+					valor={`${fecha(socio.fecha_nacimiento)} (${calcularEdad(socio.fecha_nacimiento)} años)`}
+				/>
+				<Renglon etiqueta="Género" valor={socio.genero ?? '—'} />
+				<Renglon etiqueta="Estado civil" valor={socio.estado_civil ?? '—'} />
+				<Renglon etiqueta="Escolaridad" valor={socio.escolaridad ?? '—'} />
+				<Renglon etiqueta="Clave de elector" valor={socio.clave_elector ?? '—'} />
+			</dl>
+		</section>
+
+		{/* Contacto y domicilio */}
+		<section class="panel">
+			<h2 class="panel__titulo">Contacto y domicilio</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Teléfono" valor={socio.telefono ?? '—'} />
+				<Renglon etiqueta="Alterno" valor={socio.telefono_alterno ?? '—'} />
+				<Renglon etiqueta="Correo" valor={socio.correo ?? '—'} />
+			</dl>
+			<p class="mt-4 mb-1 text-sm">
+				{[socio.calle, socio.numero_exterior, socio.numero_interior].filter(Boolean).join(' ')}
+				<br />
+				{[socio.colonia, socio.municipio, socio.entidad, socio.codigo_postal]
+					.filter(Boolean)
+					.join(', ')}
+			</p>
+			{
+				socio.referencia_domicilio && (
+					<p class="small mb-0">Referencias: {socio.referencia_domicilio}</p>
+				)
+			}
+		</section>
+
+		{/* Perfil económico */}
+		<section class="panel">
+			<h2 class="panel__titulo">Perfil económico</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Ocupación" valor={socio.ocupacion ?? '—'} />
+				<Renglon etiqueta="Empresa" valor={socio.nombre_empresa ?? '—'} />
+				<Renglon
+					etiqueta="Antigüedad laboral"
+					valor={socio.antiguedad_laboral_meses ? `${socio.antiguedad_laboral_meses} meses` : '—'}
+				/>
+				<Renglon etiqueta="Ingreso mensual" valor={pesos(socio.ingreso_mensual)} />
+				<Renglon etiqueta="Egresos mensuales" valor={pesos(socio.egresos_mensuales)} />
+				<Renglon etiqueta="Otros ingresos" valor={pesos(socio.otros_ingresos)} />
+				<Renglon etiqueta="Dependientes" valor={String(socio.dependientes_economicos ?? 0)} />
+				<Renglon etiqueta="Banco" valor={socio.banco ?? '—'} />
+				<Renglon etiqueta="CLABE" valor={socio.clabe ?? '—'} />
+			</dl>
+		</section>
+	</div>
+
+	{/* Documentos */}
+	<section class="panel mt-6">
+		<h2 class="panel__titulo">Documentos del expediente</h2>
+		<VisorDocumentos
+			client:load
+			socioId={socio.id}
+			documentos={(documentos ?? []).map((d) => ({
+				id: d.id,
+				tipo: d.tipo,
+				estado: d.estado,
+				nombre_archivo: d.nombre_archivo,
+				motivo_rechazo: d.motivo_rechazo,
+				creado_en: fecha(d.creado_en)
+			}))}
+			puedeDictaminar={puedeDictaminar}
+		/>
+	</section>
+
+	<div class="mt-6 grid gap-6 xl:grid-cols-2">
+		{/* Referencias */}
+		<section class="panel">
+			<h2 class="panel__titulo">Referencias personales</h2>
+			{
+				referencias && referencias.length > 0 ? (
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Nombre</th>
+									<th>Relación</th>
+									<th>Teléfono</th>
+									<th>Verificada</th>
+								</tr>
+							</thead>
+							<tbody>
+								{referencias.map((r) => (
+									<tr>
+										<td class="font-medium">{r.nombre}</td>
+										<td>{r.parentesco ?? '—'}</td>
+										<td>{r.telefono}</td>
+										<td>
+											<span class={`estado estado--${r.verificada ? 'verificado' : 'pendiente'}`}>
+												{r.verificada ? 'Sí' : 'Por llamar'}
+											</span>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<p class="mb-0 text-sm text-neutral-500">Sin referencias capturadas.</p>
+				)
+			}
+		</section>
+
+		{/* Beneficiarios */}
+		<section class="panel">
+			<h2 class="panel__titulo">Beneficiarios</h2>
+			{
+				beneficiarios && beneficiarios.length > 0 ? (
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Nombre</th>
+									<th>Parentesco</th>
+									<th class="num">Porcentaje</th>
+								</tr>
+							</thead>
+							<tbody>
+								{beneficiarios.map((b) => (
+									<tr>
+										<td class="font-medium">{b.nombre}</td>
+										<td>{b.parentesco}</td>
+										<td class="num">{b.porcentaje}%</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<p class="mb-0 text-sm text-neutral-500">Sin beneficiarios designados.</p>
+				)
+			}
+		</section>
+	</div>
+
+	{/* Créditos y solicitudes */}
+	<div class="mt-6 grid gap-6 xl:grid-cols-2">
+		<section class="panel">
+			<h2 class="panel__titulo">Historial de crédito</h2>
+			{
+				creditos && creditos.length > 0 ? (
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Folio</th>
+									<th>Producto</th>
+									<th class="num">Monto</th>
+									<th class="num">Saldo</th>
+									<th>Situación</th>
+								</tr>
+							</thead>
+							<tbody>
+								{creditos.map((c) => (
+									<tr>
+										<td>
+											<a href={`/admin/creditos/${c.id}`}>{c.folio}</a>
+										</td>
+										<td>{c.producto_nombre}</td>
+										<td class="num">{pesos(c.monto_principal)}</td>
+										<td class="num">{pesos(c.saldo_total)}</td>
+										<td>
+											<span class={`estado estado--${c.estado}`}>
+												{ETIQUETAS_ESTADO_CREDITO[c.estado]}
+											</span>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<p class="mb-0 text-sm text-neutral-500">Sin créditos otorgados.</p>
+				)
+			}
+		</section>
+
+		<section class="panel">
+			<h2 class="panel__titulo">Solicitudes</h2>
+			{
+				solicitudes && solicitudes.length > 0 ? (
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Folio</th>
+									<th class="num">Monto</th>
+									<th>Fecha</th>
+									<th>Situación</th>
+								</tr>
+							</thead>
+							<tbody>
+								{solicitudes.map((s) => (
+									<tr>
+										<td>
+											<a href={`/admin/solicitudes/${s.id}`}>{s.folio ?? 'Borrador'}</a>
+										</td>
+										<td class="num">{pesos(s.monto_solicitado)}</td>
+										<td>{fecha(s.creado_en)}</td>
+										<td>
+											<span class={`estado estado--${s.estado}`}>{s.estado}</span>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : (
+					<p class="mb-0 text-sm text-neutral-500">Sin solicitudes.</p>
+				)
+			}
+		</section>
+	</div>
+
+	{/* Notas internas */}
+	<section class="panel mt-6">
+		<h2 class="panel__titulo">Notas internas</h2>
+		<p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+			Visibles solo para el personal. El socio nunca las ve.
+		</p>
+		<form method="POST">
+			<input type="hidden" name="accion" value="guardar_notas" />
+			<div class="campo">
+				<label for="score_interno">Score interno (0 a 1000)</label>
+				<input
+					id="score_interno"
+					name="score_interno"
+					type="number"
+					min="0"
+					max="1000"
+					value={socio.score_interno ?? ''}
+					class="max-w-40"
+				/>
+			</div>
+			<div class="campo">
+				<label for="notas_internas">Observaciones</label>
+				<textarea id="notas_internas" name="notas_internas" rows="4"
+					>{socio.notas_internas ?? ''}</textarea
+				>
+			</div>
+			<button type="submit" class="btn btn--contorno">Guardar notas</button>
+		</form>
+		<p class="small mt-4 mb-0">
+			Última actualización del expediente: {fechaHora(socio.actualizado_en)}
+		</p>
+	</section>
+</LayoutAdmin>

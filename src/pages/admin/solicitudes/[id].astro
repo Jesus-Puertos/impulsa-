@@ -1,0 +1,514 @@
+---
+// Panel - Dictamen de una solicitud
+// ------------
+// Reúne en una pantalla lo que el analista necesita para decidir: qué pide el
+// socio, qué puede pagar, qué documentos tiene y su historial. El desembolso lo
+// ejecuta la función `desembolsar_credito`, que valida el rol por dentro.
+
+export const prerender = false
+
+import LayoutAdmin from '../../../layouts/LayoutAdmin.astro'
+import Renglon from '../../../components/impulsa/Renglon.astro'
+import {
+	pesos,
+	porcentaje,
+	fecha,
+	ETIQUETAS_ESTADO_SOLICITUD,
+	ETIQUETAS_ESTADO_SOCIO
+} from '../../../lib/formato'
+import { ETIQUETAS_PERIODO, simular, analizarCapacidadPago } from '../../../lib/credito'
+import { alcanzaRol } from '../../../lib/auth'
+
+const { supabase, perfil } = Astro.locals
+const { id } = Astro.params
+
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+// --- Acciones -----------------------------------------------------------------
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const accion = String(datos.get('accion') ?? '')
+
+	if (!alcanzaRol(perfil!.rol, 'analista')) {
+		mensaje = { tipo: 'error', texto: 'Tu rol no permite dictaminar solicitudes.' }
+	} else if (accion === 'tomar') {
+		await supabase
+			.from('solicitudes_credito')
+			.update({ estado: 'en_revision', analista_id: perfil!.id })
+			.eq('id', id!)
+		mensaje = { tipo: 'exito', texto: 'Tomaste la solicitud. Queda a tu nombre.' }
+	} else if (accion === 'aprobar' || accion === 'rechazar') {
+		const aprueba = accion === 'aprobar'
+		const comentarios = String(datos.get('comentarios') ?? '').trim() || null
+
+		if (aprueba) {
+			const montoAprobado = Number(datos.get('monto_aprobado'))
+			const plazoAprobado = Number(datos.get('plazo_aprobado'))
+			const tasa = Number(datos.get('tasa_aplicada'))
+
+			if (!montoAprobado || !plazoAprobado || Number.isNaN(tasa)) {
+				mensaje = { tipo: 'error', texto: 'Captura monto, plazo y tasa autorizados.' }
+			} else {
+				const { error } = await supabase
+					.from('solicitudes_credito')
+					.update({
+						estado: 'aprobada',
+						monto_aprobado: montoAprobado,
+						plazo_aprobado: plazoAprobado,
+						tasa_aplicada: tasa,
+						comentarios_analista: comentarios
+					})
+					.eq('id', id!)
+
+				mensaje = error
+					? { tipo: 'error', texto: `No se pudo aprobar: ${error.message}` }
+					: { tipo: 'exito', texto: 'Solicitud aprobada. Ya puede desembolsarse.' }
+			}
+		} else {
+			const motivo = String(datos.get('motivo_rechazo') ?? '').trim()
+
+			if (!motivo) {
+				mensaje = { tipo: 'error', texto: 'El motivo del rechazo es obligatorio.' }
+			} else {
+				const { error } = await supabase
+					.from('solicitudes_credito')
+					.update({
+						estado: 'rechazada',
+						motivo_rechazo: motivo,
+						comentarios_analista: comentarios
+					})
+					.eq('id', id!)
+
+				mensaje = error
+					? { tipo: 'error', texto: `No se pudo rechazar: ${error.message}` }
+					: { tipo: 'exito', texto: 'Solicitud rechazada. Se notificó al socio.' }
+			}
+		}
+
+		// Aviso al socio del resultado.
+		if (mensaje?.tipo === 'exito') {
+			const { data: sol } = await supabase
+				.from('solicitudes_credito')
+				.select('socio_id, monto_aprobado, motivo_rechazo, folio')
+				.eq('id', id!)
+				.single()
+
+			const { data: socio } = await supabase
+				.from('socios')
+				.select('perfil_id')
+				.eq('id', sol!.socio_id)
+				.single()
+
+			if (socio?.perfil_id) {
+				await supabase.from('notificaciones').insert({
+					perfil_id: socio.perfil_id,
+					titulo: aprueba ? '¡Tu crédito fue autorizado!' : 'Resolución de tu solicitud',
+					mensaje: aprueba
+						? `Autorizamos ${pesos(Number(sol!.monto_aprobado))}. Acude a tu sucursal a firmar el contrato.`
+						: `Tu solicitud ${sol!.folio} no procedió. Motivo: ${sol!.motivo_rechazo}`,
+					tipo: aprueba ? 'exito' : 'alerta',
+					enlace: `/portal/solicitudes/${id}`
+				})
+			}
+		}
+	} else if (accion === 'desembolsar') {
+		const { error } = await supabase.rpc('desembolsar_credito', {
+			p_solicitud_id: id!,
+			p_fecha_desembolso: String(datos.get('fecha_desembolso') || new Date().toISOString().slice(0, 10)),
+			p_fecha_primer_pago: String(datos.get('fecha_primer_pago') || '') || undefined
+		})
+
+		mensaje = error
+			? { tipo: 'error', texto: `No se pudo desembolsar: ${error.message}` }
+			: { tipo: 'exito', texto: 'Crédito desembolsado y tabla de amortización generada.' }
+	}
+}
+
+// --- Datos --------------------------------------------------------------------
+const { data: solicitud } = await supabase
+	.from('v_solicitudes_detalle')
+	.select('*')
+	.eq('id', id!)
+	.maybeSingle()
+
+if (!solicitud) return Astro.redirect('/admin/solicitudes')
+
+const [{ data: producto }, { data: documentos }, { data: creditosPrevios }, { data: credito }] =
+	await Promise.all([
+		supabase.from('productos_credito').select('*').eq('nombre', solicitud.producto_nombre).maybeSingle(),
+		supabase.from('documentos_socio').select('tipo, estado').eq('socio_id', solicitud.socio_id),
+		supabase
+			.from('v_creditos_detalle')
+			.select('*')
+			.eq('socio_id', solicitud.socio_id)
+			.order('fecha_desembolso', { ascending: false }),
+		supabase.from('creditos').select('id, folio').eq('solicitud_id', id!).maybeSingle()
+	])
+
+const tasaVigente = Number(solicitud.tasa_aplicada ?? solicitud.producto_tasa)
+const montoVigente = Number(solicitud.monto_aprobado ?? solicitud.monto_solicitado)
+const plazoVigente = solicitud.plazo_periodos
+
+const proyeccion = simular({
+	monto: montoVigente,
+	tasaAnual: tasaVigente,
+	periodos: plazoVigente,
+	periodicidad: solicitud.periodicidad,
+	comisionAperturaPct: producto?.comision_apertura_pct ?? 0
+})
+
+const capacidad = analizarCapacidadPago({
+	ingresoMensual: Number(solicitud.ingreso_mensual ?? 0),
+	egresosMensuales: Number(solicitud.egresos_mensuales ?? 0),
+	pagoPeriodico: proyeccion.pagoPeriodico,
+	periodicidad: solicitud.periodicidad,
+	factorMaximo: solicitud.factor_capacidad_pago,
+	tasaAnual: tasaVigente,
+	periodos: plazoVigente
+})
+
+const docsVerificados = (documentos ?? []).filter((d) => d.estado === 'verificado').length
+const docsPendientes = (documentos ?? []).filter((d) => d.estado === 'pendiente').length
+const puedeDictaminar = alcanzaRol(perfil!.rol, 'analista')
+const puedeDesembolsar = alcanzaRol(perfil!.rol, 'gerente')
+const enDictamen = ['enviada', 'en_revision'].includes(solicitud.estado)
+
+const hoy = new Date().toISOString().slice(0, 10)
+---
+
+<LayoutAdmin title={`Solicitud ${solicitud.folio ?? ''} | Panel Impulsa`} activo="solicitudes">
+	<nav class="mb-4 text-sm">
+		<a href="/admin/solicitudes">← Volver a la cola</a>
+	</nav>
+
+	<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Solicitud {solicitud.folio ?? 'sin folio'}</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				<a href={`/admin/socios/${solicitud.socio_id}`}>{solicitud.socio_nombre}</a> ·
+				{solicitud.producto_nombre} · Enviada el {fecha(solicitud.fecha_envio ?? solicitud.creado_en)}
+			</p>
+		</div>
+		<span class={`estado estado--${solicitud.estado}`}>
+			{ETIQUETAS_ESTADO_SOLICITUD[solicitud.estado]}
+		</span>
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	{/* Señales de alerta */}
+	{
+		enDictamen && (
+			<div class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+				<div class="panel">
+					<p
+						class:list={[
+							'kpi__valor',
+							capacidad.dentroDeLimite ? 'text-campo-600' : 'text-red-600'
+						]}
+					>
+						{porcentaje(capacidad.razon * 100)}
+					</p>
+					<p class="kpi__etiqueta">Pago / ingreso libre</p>
+					<p class="mt-2 mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+						Límite del producto: {porcentaje(solicitud.factor_capacidad_pago * 100)}
+					</p>
+				</div>
+				<div class="panel">
+					<p class="kpi__valor">{pesos(solicitud.ingreso_disponible)}</p>
+					<p class="kpi__etiqueta">Ingreso disponible</p>
+				</div>
+				<div class="panel">
+					<p class:list={['kpi__valor', docsPendientes > 0 && 'text-oro-600']}>
+						{docsVerificados}
+					</p>
+					<p class="kpi__etiqueta">Documentos validados</p>
+					{docsPendientes > 0 && (
+						<p class="mt-2 mb-0 text-xs text-oro-700 dark:text-oro-300">
+							{docsPendientes} sin revisar
+						</p>
+					)}
+				</div>
+				<div class="panel">
+					<p class="kpi__valor">{solicitud.creditos_activos}</p>
+					<p class="kpi__etiqueta">Créditos activos</p>
+				</div>
+			</div>
+		)
+	}
+
+	{
+		enDictamen && !capacidad.dentroDeLimite && (
+			<div class="aviso aviso--alerta">
+				<p>
+					El pago solicitado supera la capacidad de pago del producto. Con sus ingresos
+					declarados, el monto máximo recomendado es{' '}
+					<strong>{pesos(capacidad.montoMaximoRecomendado)}</strong>.
+				</p>
+			</div>
+		)
+	}
+	{
+		enDictamen && solicitud.socio_estado !== 'activo' && (
+			<div class="aviso aviso--error">
+				<p>
+					El expediente del socio está en «{ETIQUETAS_ESTADO_SOCIO[solicitud.socio_estado]}». No
+					debe autorizarse crédito hasta que esté activo.
+				</p>
+			</div>
+		)
+	}
+
+	<div class="grid gap-6 xl:grid-cols-3">
+		{/* Petición */}
+		<section class="panel">
+			<h2 class="panel__titulo">Lo que solicita</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Monto" valor={pesos(solicitud.monto_solicitado)} fuerte />
+				<Renglon
+					etiqueta="Plazo"
+					valor={`${solicitud.plazo_periodos} ${ETIQUETAS_PERIODO[solicitud.periodicidad]}`}
+				/>
+				<Renglon etiqueta="Destino" valor={solicitud.destino} />
+				<Renglon etiqueta="Producto" valor={solicitud.producto_nombre} />
+				<Renglon etiqueta="Tasa del producto" valor={porcentaje(solicitud.producto_tasa)} />
+			</dl>
+		</section>
+
+		{/* Proyección */}
+		<section class="panel">
+			<h2 class="panel__titulo">Proyección con estas condiciones</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Pago periódico" valor={pesos(proyeccion.pagoPeriodico)} fuerte />
+				<Renglon etiqueta="Total de intereses" valor={pesos(proyeccion.totalIntereses)} />
+				<Renglon etiqueta="Comisión apertura" valor={pesos(proyeccion.comisionApertura)} />
+				<Renglon etiqueta="Total a pagar" valor={pesos(proyeccion.totalAPagar)} />
+				<Renglon etiqueta="CAT" valor={porcentaje(proyeccion.cat)} />
+			</dl>
+		</section>
+
+		{/* Socio */}
+		<section class="panel">
+			<h2 class="panel__titulo">Perfil del solicitante</h2>
+			<dl class="space-y-2.5 text-sm">
+				<Renglon etiqueta="Número de socio" valor={solicitud.numero_socio ?? '—'} />
+				<Renglon etiqueta="CURP" valor={solicitud.curp} />
+				<Renglon etiqueta="Teléfono" valor={solicitud.socio_telefono ?? '—'} />
+				<Renglon etiqueta="Ingreso mensual" valor={pesos(solicitud.ingreso_mensual)} />
+				<Renglon etiqueta="Egresos" valor={pesos(solicitud.egresos_mensuales)} />
+				<Renglon etiqueta="Sucursal" valor={solicitud.sucursal_nombre ?? '—'} />
+			</dl>
+			<a
+				href={`/admin/socios/${solicitud.socio_id}`}
+				class="btn btn--contorno btn--sm mt-4"
+			>
+				Abrir expediente completo
+			</a>
+		</section>
+	</div>
+
+	{/* Dictamen */}
+	{
+		puedeDictaminar && enDictamen && (
+			<section class="panel mt-6">
+				<h2 class="panel__titulo">Dictaminar</h2>
+
+				{solicitud.estado === 'enviada' && (
+					<form method="POST" class="mb-6">
+						<input type="hidden" name="accion" value="tomar" />
+						<button type="submit" class="btn btn--contorno">
+							Tomar esta solicitud
+						</button>
+						<span class="ml-3 text-sm text-neutral-500 dark:text-neutral-400">
+							Queda asignada a tu nombre y pasa a «En revisión».
+						</span>
+					</form>
+				)}
+
+				<div class="grid gap-6 lg:grid-cols-2">
+					{/* Aprobar */}
+					<form method="POST" class="rounded-sm border border-neutral-200 p-5 dark:border-neutral-800">
+						<input type="hidden" name="accion" value="aprobar" />
+						<h3 class="text-base">Autorizar</h3>
+						<p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+							Puedes autorizar un monto o plazo distinto al solicitado.
+						</p>
+
+						<div class="campo--fila">
+							<div class="campo">
+								<label for="monto_aprobado">Monto autorizado</label>
+								<input
+									id="monto_aprobado"
+									name="monto_aprobado"
+									type="number"
+									min={producto?.monto_minimo ?? 0}
+									max={producto?.monto_maximo ?? undefined}
+									step="100"
+									value={solicitud.monto_solicitado}
+									required
+								/>
+							</div>
+							<div class="campo">
+								<label for="plazo_aprobado">Plazo ({ETIQUETAS_PERIODO[solicitud.periodicidad]})</label>
+								<input
+									id="plazo_aprobado"
+									name="plazo_aprobado"
+									type="number"
+									min={producto?.plazo_minimo_periodos ?? 1}
+									max={producto?.plazo_maximo_periodos ?? undefined}
+									value={solicitud.plazo_periodos}
+									required
+								/>
+							</div>
+						</div>
+
+						<div class="campo">
+							<label for="tasa_aplicada">Tasa anual aplicada (%)</label>
+							<input
+								id="tasa_aplicada"
+								name="tasa_aplicada"
+								type="number"
+								min="0"
+								max="200"
+								step="0.001"
+								value={solicitud.producto_tasa}
+								required
+							/>
+							<span class="campo__ayuda">
+								La tasa del producto es {porcentaje(solicitud.producto_tasa)}. Ajústala solo con
+								autorización.
+							</span>
+						</div>
+
+						<div class="campo">
+							<label for="comentarios">Comentarios para el expediente</label>
+							<textarea id="comentarios" name="comentarios" rows="2" />
+						</div>
+
+						<button type="submit" class="btn btn--primario w-full">
+							Autorizar solicitud
+						</button>
+					</form>
+
+					{/* Rechazar */}
+					<form method="POST" class="rounded-sm border border-neutral-200 p-5 dark:border-neutral-800">
+						<input type="hidden" name="accion" value="rechazar" />
+						<h3 class="text-base">Rechazar</h3>
+						<p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+							El motivo que escribas se le muestra al socio en su portal. Sé claro y respetuoso.
+						</p>
+
+						<div class="campo">
+							<label for="motivo_rechazo">Motivo del rechazo</label>
+							<textarea
+								id="motivo_rechazo"
+								name="motivo_rechazo"
+								rows="3"
+								required
+								placeholder="Ej. El pago solicitado supera tu capacidad de pago actual. Podemos revisar un monto menor."
+							/>
+						</div>
+
+						<button type="submit" class="btn btn--peligro w-full">
+							Rechazar solicitud
+						</button>
+					</form>
+				</div>
+			</section>
+		)
+	}
+
+	{/* Desembolso */}
+	{
+		solicitud.estado === 'aprobada' && (
+			<section class="panel mt-6">
+				<h2 class="panel__titulo">Desembolso</h2>
+
+				{puedeDesembolsar ? (
+					<>
+						<div class="aviso aviso--info">
+							<p>
+								Al desembolsar se crea el crédito y se genera su tabla de amortización. Esta
+								operación no se puede deshacer desde el panel.
+							</p>
+						</div>
+						<form method="POST" class="flex flex-wrap items-end gap-4">
+							<input type="hidden" name="accion" value="desembolsar" />
+							<div class="campo mb-0! w-56">
+								<label for="fecha_desembolso">Fecha de desembolso</label>
+								<input id="fecha_desembolso" name="fecha_desembolso" type="date" value={hoy} required />
+							</div>
+							<div class="campo mb-0! w-56">
+								<label for="fecha_primer_pago">Primer pago (opcional)</label>
+								<input id="fecha_primer_pago" name="fecha_primer_pago" type="date" />
+								<span class="campo__ayuda">Si se deja vacío, un periodo después.</span>
+							</div>
+							<button type="submit" class="btn btn--primario">
+								Desembolsar {pesos(solicitud.monto_aprobado ?? 0)}
+							</button>
+						</form>
+					</>
+				) : (
+					<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+						El desembolso lo autoriza gerencia. Avísale que esta solicitud está lista.
+					</p>
+				)}
+			</section>
+		)
+	}
+
+	{
+		credito && (
+			<div class="aviso aviso--exito mt-6">
+				<p>
+					Esta solicitud ya originó el crédito <a href={`/admin/creditos/${credito.id}`}>{credito.folio}</a>.
+				</p>
+			</div>
+		)
+	}
+
+	{/* Historial del socio */}
+	{
+		creditosPrevios && creditosPrevios.length > 0 && (
+			<section class="panel mt-6">
+				<h2 class="panel__titulo">Comportamiento de pago anterior</h2>
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Folio</th>
+								<th>Producto</th>
+								<th class="num">Monto</th>
+								<th class="num">Saldo</th>
+								<th>Mora máx.</th>
+								<th>Situación</th>
+							</tr>
+						</thead>
+						<tbody>
+							{creditosPrevios.map((c) => (
+								<tr>
+									<td>
+										<a href={`/admin/creditos/${c.id}`}>{c.folio}</a>
+									</td>
+									<td>{c.producto_nombre}</td>
+									<td class="num">{pesos(c.monto_principal)}</td>
+									<td class="num">{pesos(c.saldo_total)}</td>
+									<td>{c.dias_mora > 0 ? `${c.dias_mora} d` : '—'}</td>
+									<td>
+										<span class={`estado estado--${c.estado}`}>{c.estado}</span>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			</section>
+		)
+	}
+</LayoutAdmin>

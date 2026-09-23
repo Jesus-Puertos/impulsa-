@@ -1,0 +1,68 @@
+---
+// Portal - Nueva solicitud de crédito
+export const prerender = false
+
+import LayoutPortal from '../../../layouts/LayoutPortal.astro'
+import FormularioSolicitud from '../../../components/impulsa/FormularioSolicitud'
+
+const { supabase, perfil } = Astro.locals
+const socioId = perfil!.socio_id
+if (!socioId) return Astro.redirect('/registro')
+
+// La comprobación real está en el endpoint; aquí solo se evita mostrar un
+// formulario que de todos modos sería rechazado.
+if (perfil!.socio_estado !== 'activo') {
+	return Astro.redirect('/portal/solicitudes')
+}
+
+const [{ data: productos }, { data: socio }] = await Promise.all([
+	supabase.from('productos_credito').select('*').eq('activo', true).order('orden'),
+	supabase
+		.from('socios')
+		.select('ingreso_mensual, egresos_mensuales, otros_ingresos')
+		.eq('id', socioId)
+		.single()
+])
+
+const simulacionId = Astro.url.searchParams.get('simulacion')
+let simulacion = null
+
+if (simulacionId) {
+	const { data } = await supabase
+		.from('simulaciones')
+		.select('id, producto_id, monto, plazo_periodos')
+		.eq('id', simulacionId)
+		.maybeSingle()
+	simulacion = data
+}
+---
+
+<LayoutPortal title="Nueva solicitud | Cooperativa Impulsa" activo="solicitudes">
+	<nav class="mb-4 text-sm">
+		<a href="/portal/solicitudes">← Volver a mis solicitudes</a>
+	</nav>
+
+	<h1 class="h2 mb-2">Solicitar un crédito</h1>
+	<p class="mb-8 text-neutral-500 dark:text-neutral-400">
+		Elige el producto, el monto y el plazo. Verás el pago exacto antes de enviar.
+	</p>
+
+	{
+		simulacion && (
+			<div class="aviso aviso--info">
+				<p>Cargamos las condiciones de la simulación que hiciste. Puedes ajustarlas si quieres.</p>
+			</div>
+		)
+	}
+
+	<FormularioSolicitud
+		client:load
+		productos={productos ?? []}
+		economia={{
+			ingreso: Number(socio?.ingreso_mensual ?? 0),
+			egresos: Number(socio?.egresos_mensuales ?? 0),
+			otros: Number(socio?.otros_ingresos ?? 0)
+		}}
+		simulacion={simulacion}
+	/>
+</LayoutPortal>

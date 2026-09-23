@@ -1,0 +1,160 @@
+---
+// Panel - Cola de solicitudes de crédito
+export const prerender = false
+
+import LayoutAdmin from '../../../layouts/LayoutAdmin.astro'
+import { pesos, fecha, ETIQUETAS_ESTADO_SOLICITUD } from '../../../lib/formato'
+import { ETIQUETAS_PERIODO } from '../../../lib/credito'
+import type { EstadoSolicitud } from '../../../lib/supabase/database.types'
+
+const { supabase } = Astro.locals
+const params = Astro.url.searchParams
+
+// Por omisión se muestra lo que hay que trabajar, no todo el histórico.
+const filtro = params.get('estado') ?? 'pendientes'
+const busqueda = params.get('q')?.trim() ?? ''
+
+let consulta = supabase.from('v_solicitudes_detalle').select('*', { count: 'exact' })
+
+if (filtro === 'pendientes') {
+	consulta = consulta.in('estado', ['enviada', 'en_revision']).order('fecha_envio')
+} else if (filtro !== 'todas') {
+	consulta = consulta.eq('estado', filtro as EstadoSolicitud).order('creado_en', { ascending: false })
+} else {
+	consulta = consulta.order('creado_en', { ascending: false })
+}
+
+if (busqueda) {
+	consulta = consulta.or(`socio_nombre.ilike.%${busqueda}%,folio.ilike.%${busqueda}%,curp.ilike.%${busqueda}%`)
+}
+
+const { data: solicitudes, count } = await consulta.limit(100)
+
+const FILTROS = [
+	{ valor: 'pendientes', etiqueta: 'Por dictaminar' },
+	{ valor: 'aprobada', etiqueta: 'Aprobadas' },
+	{ valor: 'rechazada', etiqueta: 'Rechazadas' },
+	{ valor: 'desembolsada', etiqueta: 'Desembolsadas' },
+	{ valor: 'todas', etiqueta: 'Todas' }
+]
+---
+
+<LayoutAdmin title="Solicitudes | Panel Impulsa" activo="solicitudes">
+	<div class="mb-6">
+		<h1 class="h2 mb-1">Solicitudes de crédito</h1>
+		<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">{count ?? 0} solicitud(es)</p>
+	</div>
+
+	<div class="panel mb-6 flex flex-wrap items-end gap-4">
+		<div class="flex flex-wrap gap-1.5">
+			{
+				FILTROS.map((f) => (
+					<a
+						href={`?estado=${f.valor}${busqueda ? `&q=${encodeURIComponent(busqueda)}` : ''}`}
+						class:list={[
+							'btn btn--sm no-underline!',
+							filtro === f.valor ? 'btn--primario' : 'btn--contorno'
+						]}
+					>
+						{f.etiqueta}
+					</a>
+				))
+			}
+		</div>
+
+		<form method="GET" class="ml-auto flex items-end gap-2">
+			<input type="hidden" name="estado" value={filtro} />
+			<div class="campo mb-0! w-64">
+				<label for="q" class="sr-only">Buscar</label>
+				<input id="q" name="q" type="search" value={busqueda} placeholder="Socio, folio o CURP" />
+			</div>
+			<button type="submit" class="btn btn--contorno">Buscar</button>
+		</form>
+	</div>
+
+	<div class="panel">
+		{
+			solicitudes && solicitudes.length > 0 ? (
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Folio</th>
+								<th>Socio</th>
+								<th>Producto</th>
+								<th class="num">Solicita</th>
+								<th>Plazo</th>
+								<th class="num">Ingreso libre</th>
+								<th>Docs</th>
+								<th>Espera</th>
+								<th>Situación</th>
+								<th />
+							</tr>
+						</thead>
+						<tbody>
+							{solicitudes.map((s) => (
+								<tr>
+									<td class="text-xs">{s.folio ?? '—'}</td>
+									<td>
+										<a href={`/admin/socios/${s.socio_id}`} class="font-medium">
+											{s.socio_nombre}
+										</a>
+										<span class="block text-xs text-neutral-500">
+											{s.numero_socio ?? 'Sin número'} · {s.socio_telefono ?? 'Sin teléfono'}
+										</span>
+									</td>
+									<td>{s.producto_nombre}</td>
+									<td class="num font-medium">{pesos(s.monto_solicitado)}</td>
+									<td class="text-xs">
+										{s.plazo_periodos} {ETIQUETAS_PERIODO[s.periodicidad]}
+									</td>
+									<td class="num">{pesos(s.ingreso_disponible)}</td>
+									<td>
+										<span
+											class:list={[
+												'estado',
+												s.documentos_verificados >= 3 ? 'estado--verificado' : 'estado--pendiente'
+											]}
+										>
+											{s.documentos_verificados}
+										</span>
+									</td>
+									<td>
+										{s.dias_en_espera !== null ? (
+											<span
+												class:list={[
+													'estado',
+													s.dias_en_espera > 5 ? 'estado--vencido' : 'estado--pendiente'
+												]}
+											>
+												{s.dias_en_espera} d
+											</span>
+										) : (
+											<span class="text-xs text-neutral-500">{fecha(s.creado_en)}</span>
+										)}
+									</td>
+									<td>
+										<span class={`estado estado--${s.estado}`}>
+											{ETIQUETAS_ESTADO_SOLICITUD[s.estado]}
+										</span>
+									</td>
+									<td>
+										<a href={`/admin/solicitudes/${s.id}`}>
+											{['enviada', 'en_revision'].includes(s.estado) ? 'Dictaminar' : 'Ver'}
+										</a>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<p class="mb-0 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+					{filtro === 'pendientes'
+						? 'No hay solicitudes esperando dictamen.'
+						: 'No hay solicitudes que coincidan.'}
+				</p>
+			)
+		}
+	</div>
+</LayoutAdmin>

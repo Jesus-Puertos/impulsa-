@@ -1,0 +1,92 @@
+---
+// Marca Impulsa
+// ------------
+// Description: El bloque de marca (isotipo + logotipo) de Cooperativa Impulsa.
+//
+// El isotipo es un SVG puramente geometrico, por lo que se puede incrustar
+// como archivo o inline sin depender de fuentes. El logotipo se compone con
+// texto HTML real para que use las familias corporativas cargadas por la web
+// (manual 1.1.1: "Cooperativa" en tipografia ligera, "Impulsa" en bold) y
+// para que siga siendo seleccionable y accesible.
+//
+// Properties:
+// - tamano: escala del bloque de marca (sm, base, lg)
+// - soloIsotipo: oculta el logotipo y deja unicamente el simbolo
+// - enlace: URL destino; si es null no se envuelve en <a>
+
+type Props = {
+	tamano?: 'sm' | 'base' | 'lg' | 'xl'
+	soloIsotipo?: boolean
+	enlace?: string | null
+	classes?: string
+}
+const { tamano = 'base', soloIsotipo = false, enlace = '/', classes } = Astro.props
+
+const medidas = {
+	sm: { caja: 'size-8', cooperativa: 'text-[0.5rem] tracking-[0.22em]', impulsa: 'text-lg' },
+	base: { caja: 'size-10', cooperativa: 'text-[0.55rem] tracking-[0.26em]', impulsa: 'text-xl' },
+	lg: { caja: 'size-14', cooperativa: 'text-[0.7rem] tracking-[0.28em]', impulsa: 'text-3xl' },
+	// Solo para la portada, donde la marca encabeza el bloque en lugar de
+	// acompañarlo. Fuera de ahí compite con el titular.
+	xl: { caja: 'size-16 sm:size-20', cooperativa: 'text-xs tracking-[0.3em]', impulsa: 'text-4xl sm:text-5xl' }
+}[tamano]
+
+const Contenedor = enlace ? 'a' : 'div'
+---
+
+<Contenedor
+	{...enlace ? { href: enlace } : {}}
+	class:list={['marca', { [`${classes}`]: classes }]}
+	aria-label="Cooperativa Impulsa"
+>
+	<svg
+		class:list={['marca__isotipo', medidas.caja]}
+		viewBox="0 0 64 64"
+		aria-hidden="true"
+		focusable="false"
+	>
+		<rect width="64" height="64" rx="13" class="marca__fondo"></rect>
+		<rect x="13" y="36" width="9" height="15" rx="3" class="marca__barra1"></rect>
+		<rect x="27.5" y="27" width="9" height="24" rx="3" class="marca__barra2"></rect>
+		<rect x="42" y="14" width="9" height="37" rx="3" class="marca__barra3"></rect>
+	</svg>
+	{
+		!soloIsotipo && (
+			<span class="marca__logotipo">
+				<span class:list={['marca__cooperativa', medidas.cooperativa]}>Cooperativa</span>
+				<span class:list={['marca__impulsa', medidas.impulsa]}>Impulsa</span>
+			</span>
+		)
+	}
+</Contenedor>
+
+<style>
+	@reference '../../styles/global.css';
+	.marca {
+		@apply inline-flex items-center gap-2.5 text-inherit no-underline;
+	}
+	.marca__isotipo {
+		@apply shrink-0;
+	}
+	.marca__fondo {
+		@apply fill-primary-600 dark:fill-primary-500;
+	}
+	.marca__barra1 {
+		@apply fill-primary-300 dark:fill-neutral-200;
+	}
+	.marca__barra2 {
+		@apply fill-oro-400 dark:fill-oro-300;
+	}
+	.marca__barra3 {
+		@apply fill-campo-500 dark:fill-campo-400;
+	}
+	.marca__logotipo {
+		@apply flex flex-col justify-center leading-none;
+	}
+	.marca__cooperativa {
+		@apply font-body font-light text-neutral-500 uppercase dark:text-neutral-400;
+	}
+	.marca__impulsa {
+		@apply font-display mt-0.5 leading-none text-neutral-950 dark:text-white;
+	}
+</style>

@@ -1,0 +1,279 @@
+---
+// Portal del socio - Resumen
+// ------------
+// Primera pantalla tras iniciar sesión. Responde tres preguntas de un vistazo:
+// cuánto debo, cuándo es mi próximo pago y qué trámite tengo abierto.
+
+export const prerender = false
+
+import LayoutPortal from '../../layouts/LayoutPortal.astro'
+import { pesos, fecha, tiempoRelativo, ETIQUETAS_ESTADO_SOLICITUD } from '../../lib/formato'
+
+const { supabase, perfil } = Astro.locals
+const socioId = perfil!.socio_id
+
+// Sin expediente el portal no tiene nada que mostrar: se manda a completarlo.
+if (!socioId) return Astro.redirect('/registro')
+
+const [{ data: creditos }, { data: solicitudes }, { data: cuentas }, { data: proximas }] =
+	await Promise.all([
+		supabase
+			.from('v_creditos_detalle')
+			.select('*')
+			.eq('socio_id', socioId)
+			.in('estado', ['vigente', 'atrasado'])
+			.order('fecha_desembolso', { ascending: false }),
+		supabase
+			.from('solicitudes_credito')
+			.select('id, folio, estado, monto_solicitado, creado_en, productos_credito(nombre)')
+			.eq('socio_id', socioId)
+			.not('estado', 'in', '("desembolsada","cancelada")')
+			.order('creado_en', { ascending: false })
+			.limit(3),
+		supabase
+			.from('cuentas_ahorro')
+			.select('id, numero_cuenta, saldo, meta_ahorro, productos_ahorro(nombre)')
+			.eq('socio_id', socioId)
+			.eq('activa', true),
+		supabase
+			.from('v_cobranza')
+			.select('*')
+			.eq('socio_id', socioId)
+			.order('fecha_vencimiento')
+			.limit(3)
+	])
+
+const deudaTotal = (creditos ?? []).reduce((suma, c) => suma + Number(c.saldo_total), 0)
+const ahorroTotal = (cuentas ?? []).reduce((suma, c) => suma + Number(c.saldo), 0)
+const proximaCuota = proximas?.[0]
+const enMora = (creditos ?? []).some((c) => c.estado === 'atrasado')
+
+const estadoExpediente = perfil!.socio_estado
+---
+
+<LayoutPortal title="Mi portal | Cooperativa Impulsa" activo="inicio">
+	<h1 class="h2 mb-2">Hola, {perfil!.nombre}</h1>
+	<p class="mb-8 text-neutral-500 dark:text-neutral-400">
+		Este es el resumen de tu relación con la cooperativa.
+	</p>
+
+	{/* Avisos según el estado del expediente */}
+	{
+		estadoExpediente === 'prospecto' && (
+			<div class="aviso aviso--alerta">
+				<p>
+					Tu expediente está incompleto. <a href="/registro">Termina tu registro</a> para poder
+					solicitar créditos y abrir tu cuenta de ahorro.
+				</p>
+			</div>
+		)
+	}
+	{
+		estadoExpediente === 'en_revision' && (
+			<div class="aviso aviso--info">
+				<p>
+					Tu expediente está en revisión. Te avisaremos por correo en cuanto tengamos respuesta,
+					normalmente en 3 a 5 días hábiles.
+				</p>
+			</div>
+		)
+	}
+	{
+		enMora && (
+			<div class="aviso aviso--error">
+				<p>
+					Tienes pagos vencidos. Acércate a tu sucursal o llámanos para ponerte al corriente y
+					evitar más intereses moratorios.
+				</p>
+			</div>
+		)
+	}
+
+	{/* KPIs */}
+	<div class="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+		<div class="panel">
+			<p class="kpi__valor">{pesos(deudaTotal)}</p>
+			<p class="kpi__etiqueta">Saldo de mis créditos</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{pesos(ahorroTotal)}</p>
+			<p class="kpi__etiqueta">Mi ahorro</p>
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{proximaCuota ? pesos(proximaCuota.total_pendiente) : '—'}</p>
+			<p class="kpi__etiqueta">Próximo pago</p>
+			{
+				proximaCuota && (
+					<p class="mt-1 mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+						Vence {fecha(proximaCuota.fecha_vencimiento, 'larga')} (
+						{tiempoRelativo(proximaCuota.fecha_vencimiento)})
+					</p>
+				)
+			}
+		</div>
+		<div class="panel">
+			<p class="kpi__valor">{creditos?.length ?? 0}</p>
+			<p class="kpi__etiqueta">Créditos activos</p>
+		</div>
+	</div>
+
+	<div class="grid gap-6 lg:grid-cols-2">
+		{/* Créditos */}
+		<section class="panel">
+			<div class="mb-4 flex items-center justify-between">
+				<h2 class="panel__titulo mb-0">Mis créditos</h2>
+				<a href="/portal/creditos" class="text-sm">Ver todos</a>
+			</div>
+
+			{
+				creditos && creditos.length > 0 ? (
+					<ul class="space-y-4">
+						{creditos.map((c) => (
+							<li class="border-b border-neutral-100 pb-4 last:border-0 last:pb-0 dark:border-neutral-800">
+								<div class="mb-2 flex flex-wrap items-start justify-between gap-2">
+									<div>
+										<a
+											href={`/portal/creditos/${c.id}`}
+											class="font-medium no-underline hover:underline"
+										>
+											{c.producto_nombre}
+										</a>
+										<p class="mb-0 text-xs text-neutral-500 dark:text-neutral-400">{c.folio}</p>
+									</div>
+									<span class={`estado estado--${c.estado}`}>
+										{c.estado === 'atrasado' ? `${c.dias_mora} días de atraso` : 'Al corriente'}
+									</span>
+								</div>
+
+								<div
+									class="mb-2 h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700"
+									role="progressbar"
+									aria-valuenow={c.porcentaje_amortizado}
+									aria-valuemin="0"
+									aria-valuemax="100"
+									aria-label="Avance de pago"
+								>
+									<span
+										class="bg-campo-500 block h-full rounded-full"
+										style={`width: ${c.porcentaje_amortizado}%`}
+									/>
+								</div>
+
+								<p class="mb-0 flex justify-between text-xs text-neutral-500 dark:text-neutral-400">
+									<span>
+										{c.cuotas_pagadas} de {c.plazo_periodos} pagos
+									</span>
+									<span>Saldo {pesos(c.saldo_total)}</span>
+								</p>
+							</li>
+						))}
+					</ul>
+				) : (
+					<div class="py-6 text-center">
+						<p class="text-sm text-neutral-500 dark:text-neutral-400">
+							Todavía no tienes créditos activos.
+						</p>
+						<a href="/simulador" class="btn btn--primario btn--sm">
+							Simular un crédito
+						</a>
+					</div>
+				)
+			}
+		</section>
+
+		{/* Solicitudes */}
+		<section class="panel">
+			<div class="mb-4 flex items-center justify-between">
+				<h2 class="panel__titulo mb-0">Mis solicitudes</h2>
+				<a href="/portal/solicitudes" class="text-sm">Ver todas</a>
+			</div>
+
+			{
+				solicitudes && solicitudes.length > 0 ? (
+					<ul class="space-y-3">
+						{solicitudes.map((s) => (
+							<li class="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 pb-3 last:border-0 last:pb-0 dark:border-neutral-800">
+								<div>
+									<a href={`/portal/solicitudes/${s.id}`} class="text-sm font-medium no-underline hover:underline">
+										{(s.productos_credito as { nombre: string } | null)?.nombre ?? 'Crédito'}
+									</a>
+									<p class="mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+										{pesos(s.monto_solicitado)} · {fecha(s.creado_en)}
+									</p>
+								</div>
+								<span class={`estado estado--${s.estado}`}>
+									{ETIQUETAS_ESTADO_SOLICITUD[s.estado]}
+								</span>
+							</li>
+						))}
+					</ul>
+				) : (
+					<div class="py-6 text-center">
+						<p class="text-sm text-neutral-500 dark:text-neutral-400">
+							No tienes solicitudes en trámite.
+						</p>
+						{estadoExpediente === 'activo' ? (
+							<a href="/portal/solicitudes/nueva" class="btn btn--primario btn--sm">
+								Solicitar un crédito
+							</a>
+						) : (
+							<p class="small mb-0">
+								Podrás solicitar crédito cuando tu expediente esté aprobado.
+							</p>
+						)}
+					</div>
+				)
+			}
+		</section>
+	</div>
+
+	{/* Próximos pagos */}
+	{
+		proximas && proximas.length > 0 && (
+			<section class="panel mt-6">
+				<h2 class="panel__titulo">Próximos pagos</h2>
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Crédito</th>
+								<th>Cuota</th>
+								<th>Vence</th>
+								<th class="num">Monto</th>
+								<th>Situación</th>
+							</tr>
+						</thead>
+						<tbody>
+							{proximas.map((c) => (
+								<tr>
+									<td>
+										<a href={`/portal/creditos/${c.credito_id}`}>{c.credito_folio}</a>
+									</td>
+									<td>#{c.numero_cuota}</td>
+									<td>
+										{fecha(c.fecha_vencimiento)}
+										<span class="block text-xs text-neutral-500">
+											{tiempoRelativo(c.fecha_vencimiento)}
+										</span>
+									</td>
+									<td class="num font-medium">{pesos(c.total_pendiente)}</td>
+									<td>
+										<span
+											class={`estado estado--${c.dias_vencida > 0 ? 'vencido' : 'pendiente'}`}
+										>
+											{c.dias_vencida > 0 ? `Vencida hace ${c.dias_vencida} d` : 'Por vencer'}
+										</span>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+				<p class="small mt-4 mb-0">
+					Puedes pagar en cualquier sucursal, por transferencia o con depósito referenciado.
+					<a href="/sucursales"> Ver sucursales</a>.
+				</p>
+			</section>
+		)
+	}
+</LayoutPortal>

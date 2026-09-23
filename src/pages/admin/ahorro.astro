@@ -1,0 +1,346 @@
+---
+// Panel - Cuentas de ahorro y movimientos de caja
+// ------------
+// Apertura de cuentas y registro de depósitos/retiros. El saldo lo mantiene el
+// trigger `aplicar_movimiento_ahorro`, que bloquea la fila de la cuenta para
+// que dos cajeros no lean el mismo saldo a la vez.
+
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { pesos, pesosCortos, fecha, ETIQUETAS_METODO_PAGO } from '../../lib/formato'
+import { alcanzaRol } from '../../lib/auth'
+import type { MetodoPago, TipoMovimientoAhorro } from '../../lib/supabase/database.types'
+
+const { supabase, perfil } = Astro.locals
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+const puedeOperar = alcanzaRol(perfil!.rol, 'cajero')
+
+if (Astro.request.method === 'POST' && puedeOperar) {
+	const datos = await Astro.request.formData()
+	const accion = String(datos.get('accion') ?? '')
+	const txt = (k: string) => String(datos.get(k) ?? '').trim()
+
+	if (accion === 'abrir_cuenta') {
+		const { error } = await supabase.from('cuentas_ahorro').insert({
+			socio_id: txt('socio_id'),
+			producto_id: txt('producto_id'),
+			sucursal_id: perfil!.sucursal_id,
+			meta_ahorro: Number(datos.get('meta_ahorro')) || null,
+			aperturada_por: perfil!.id
+		})
+
+		mensaje = error
+			? { tipo: 'error', texto: `No se pudo abrir la cuenta: ${error.message}` }
+			: { tipo: 'exito', texto: 'Cuenta abierta. Registra el depósito de apertura.' }
+	} else if (accion === 'movimiento') {
+		const monto = Number(datos.get('monto'))
+
+		if (!monto || monto <= 0) {
+			mensaje = { tipo: 'error', texto: 'El monto debe ser mayor que cero.' }
+		} else {
+			const { error } = await supabase.from('movimientos_ahorro').insert({
+				cuenta_id: txt('cuenta_id'),
+				tipo: txt('tipo') as TipoMovimientoAhorro,
+				monto,
+				metodo: (txt('metodo') || null) as MetodoPago | null,
+				referencia: txt('referencia') || null,
+				fecha: txt('fecha') || new Date().toISOString().slice(0, 10),
+				notas: txt('notas') || null
+			})
+
+			mensaje = error
+				? { tipo: 'error', texto: error.message }
+				: { tipo: 'exito', texto: `Movimiento de ${pesos(monto)} registrado.` }
+		}
+	}
+}
+
+const busqueda = Astro.url.searchParams.get('q')?.trim() ?? ''
+const cuentaId = Astro.url.searchParams.get('cuenta')
+
+let consulta = supabase
+	.from('cuentas_ahorro')
+	.select('*, socios(id, nombre, apellido_paterno, apellido_materno, numero_socio), productos_ahorro(nombre)')
+	.eq('activa', true)
+	.order('fecha_apertura', { ascending: false })
+
+const { data: cuentas } = await consulta.limit(200)
+
+// El filtro por nombre se hace en memoria porque `or` de PostgREST no navega
+// relaciones anidadas de forma fiable.
+const filtradas = busqueda
+	? (cuentas ?? []).filter((c) => {
+			const s = c.socios as { nombre: string; apellido_paterno: string; numero_socio: string | null } | null
+			const texto = `${s?.nombre ?? ''} ${s?.apellido_paterno ?? ''} ${s?.numero_socio ?? ''} ${c.numero_cuenta ?? ''}`
+			return texto.toLowerCase().includes(busqueda.toLowerCase())
+		})
+	: (cuentas ?? [])
+
+const cuentaActiva = cuentaId ? (cuentas ?? []).find((c) => c.id === cuentaId) : null
+
+const { data: movimientos } = cuentaActiva
+	? await supabase
+			.from('movimientos_ahorro')
+			.select('*')
+			.eq('cuenta_id', cuentaActiva.id)
+			.order('fecha', { ascending: false })
+			.order('creado_en', { ascending: false })
+			.limit(50)
+	: { data: [] }
+
+const [{ data: productos }, { data: sociosActivos }] = await Promise.all([
+	supabase.from('productos_ahorro').select('id, nombre, monto_minimo_apertura').eq('activo', true).order('orden'),
+	supabase
+		.from('socios')
+		.select('id, nombre, apellido_paterno, apellido_materno, numero_socio')
+		.eq('estado', 'activo')
+		.order('apellido_paterno')
+		.limit(500)
+])
+
+const saldoTotal = filtradas.reduce((s, c) => s + Number(c.saldo), 0)
+const hoy = new Date().toISOString().slice(0, 10)
+const abrir = Astro.url.searchParams.get('abrir') === '1'
+
+const ETIQUETAS_MOV: Record<TipoMovimientoAhorro, string> = {
+	deposito: 'Depósito',
+	retiro: 'Retiro',
+	interes: 'Abono de intereses',
+	comision: 'Comisión',
+	ajuste: 'Ajuste'
+}
+---
+
+<LayoutAdmin title="Ahorro | Panel Impulsa" activo="ahorro">
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Ahorro</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				{filtradas.length} cuenta(s) activa(s) · {pesosCortos(saldoTotal)} captados
+			</p>
+		</div>
+		{puedeOperar && <a href="?abrir=1" class="btn btn--primario">Abrir cuenta</a>}
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	{
+		!puedeOperar && (
+			<div class="aviso aviso--alerta">
+				<p>Tu rol permite consultar el ahorro, pero no registrar movimientos.</p>
+			</div>
+		)
+	}
+
+	{/* Apertura */}
+	{
+		abrir && puedeOperar && (
+			<section class="panel mb-6">
+				<h2 class="panel__titulo">Abrir cuenta de ahorro</h2>
+				<form method="POST" class="flex flex-wrap items-end gap-4">
+					<input type="hidden" name="accion" value="abrir_cuenta" />
+
+					<div class="campo mb-0! min-w-72 flex-1">
+						<label for="socio_id">Socio</label>
+						<select id="socio_id" name="socio_id" required>
+							<option value="">Selecciona un socio activo</option>
+							{(sociosActivos ?? []).map((s) => (
+								<option value={s.id}>
+									{s.numero_socio ?? 'S/N'} — {s.apellido_paterno} {s.apellido_materno ?? ''}{' '}
+									{s.nombre}
+								</option>
+							))}
+						</select>
+					</div>
+
+					<div class="campo mb-0! w-64">
+						<label for="producto_id">Instrumento</label>
+						<select id="producto_id" name="producto_id" required>
+							{(productos ?? []).map((p) => (
+								<option value={p.id}>
+									{p.nombre} (desde {pesos(p.monto_minimo_apertura)})
+								</option>
+							))}
+						</select>
+					</div>
+
+					<div class="campo mb-0! w-40">
+						<label for="meta_ahorro">Meta (opcional)</label>
+						<input id="meta_ahorro" name="meta_ahorro" type="number" min="0" step="100" />
+					</div>
+
+					<button type="submit" class="btn btn--primario">Abrir</button>
+					<a href="/admin/ahorro" class="btn btn--fantasma">Cancelar</a>
+				</form>
+			</section>
+		)
+	}
+
+	{/* Movimiento sobre la cuenta seleccionada */}
+	{
+		cuentaActiva && puedeOperar && (
+			<section class="panel mb-6">
+				<h2 class="panel__titulo">
+					Registrar movimiento · {cuentaActiva.numero_cuenta} ·{' '}
+					{(cuentaActiva.socios as { nombre: string; apellido_paterno: string } | null)?.nombre}{' '}
+					{(cuentaActiva.socios as { apellido_paterno: string } | null)?.apellido_paterno}
+				</h2>
+				<p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+					Saldo actual: <strong>{pesos(cuentaActiva.saldo)}</strong>
+				</p>
+
+				<form method="POST" class="flex flex-wrap items-end gap-4">
+					<input type="hidden" name="accion" value="movimiento" />
+					<input type="hidden" name="cuenta_id" value={cuentaActiva.id} />
+
+					<div class="campo mb-0! w-44">
+						<label for="tipo">Tipo</label>
+						<select id="tipo" name="tipo" required>
+							<option value="deposito">Depósito</option>
+							<option value="retiro">Retiro</option>
+							<option value="interes">Abono de intereses</option>
+							<option value="comision">Comisión</option>
+						</select>
+					</div>
+
+					<div class="campo mb-0! w-40">
+						<label for="monto">Monto</label>
+						<input id="monto" name="monto" type="number" min="0.01" step="0.01" required />
+					</div>
+
+					<div class="campo mb-0! w-44">
+						<label for="metodo">Forma</label>
+						<select id="metodo" name="metodo">
+							<option value="efectivo">Efectivo</option>
+							<option value="transferencia">Transferencia</option>
+							<option value="deposito">Depósito</option>
+						</select>
+					</div>
+
+					<div class="campo mb-0! w-44">
+						<label for="fecha">Fecha</label>
+						<input id="fecha" name="fecha" type="date" value={hoy} required />
+					</div>
+
+					<div class="campo mb-0! min-w-48 flex-1">
+						<label for="notas">Notas</label>
+						<input id="notas" name="notas" />
+					</div>
+
+					<button type="submit" class="btn btn--primario">Registrar</button>
+					<a href="/admin/ahorro" class="btn btn--fantasma">Cerrar</a>
+				</form>
+
+				{movimientos && movimientos.length > 0 && (
+					<div class="tabla-scroll mt-6">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Fecha</th>
+									<th>Folio</th>
+									<th>Concepto</th>
+									<th>Forma</th>
+									<th class="num">Monto</th>
+									<th class="num">Saldo</th>
+								</tr>
+							</thead>
+							<tbody>
+								{movimientos.map((m) => {
+									const suma = ['deposito', 'interes', 'ajuste'].includes(m.tipo)
+									return (
+										<tr>
+											<td>{fecha(m.fecha)}</td>
+											<td class="text-xs">{m.folio}</td>
+											<td>{ETIQUETAS_MOV[m.tipo]}</td>
+											<td class="text-xs">{m.metodo ? ETIQUETAS_METODO_PAGO[m.metodo] : '—'}</td>
+											<td
+												class:list={[
+													'num font-medium',
+													suma ? 'text-campo-700 dark:text-campo-300' : 'text-red-700 dark:text-red-400'
+												]}
+											>
+												{suma ? '+' : '−'} {pesos(m.monto)}
+											</td>
+											<td class="num">{pesos(m.saldo_posterior)}</td>
+										</tr>
+									)
+								})}
+							</tbody>
+						</table>
+					</div>
+				)}
+			</section>
+		)
+	}
+
+	<form method="GET" class="panel mb-6 flex items-end gap-3">
+		<div class="campo mb-0! min-w-64 flex-1">
+			<label for="q">Buscar cuenta</label>
+			<input id="q" name="q" type="search" value={busqueda} placeholder="Socio o número de cuenta" />
+		</div>
+		<button type="submit" class="btn btn--contorno">Buscar</button>
+	</form>
+
+	<section class="panel">
+		{
+			filtradas.length > 0 ? (
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Cuenta</th>
+								<th>Socio</th>
+								<th>Instrumento</th>
+								<th class="num">Saldo</th>
+								<th>Apertura</th>
+								<th />
+							</tr>
+						</thead>
+						<tbody>
+							{filtradas.map((c) => {
+								const s = c.socios as {
+									id: string
+									nombre: string
+									apellido_paterno: string
+									apellido_materno: string | null
+									numero_socio: string | null
+								} | null
+								return (
+									<tr>
+										<td class="font-mono text-xs">{c.numero_cuenta}</td>
+										<td>
+											<a href={`/admin/socios/${s?.id}`} class="font-medium">
+												{s?.nombre} {s?.apellido_paterno} {s?.apellido_materno ?? ''}
+											</a>
+											<span class="block text-xs text-neutral-500">{s?.numero_socio ?? '—'}</span>
+										</td>
+										<td class="text-xs">
+											{(c.productos_ahorro as { nombre: string } | null)?.nombre ?? '—'}
+										</td>
+										<td class="num font-medium">{pesos(c.saldo)}</td>
+										<td class="text-xs">{fecha(c.fecha_apertura)}</td>
+										<td>
+											<a href={`?cuenta=${c.id}`}>Operar</a>
+										</td>
+									</tr>
+								)
+							})}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<p class="mb-0 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+					No hay cuentas que coincidan.
+				</p>
+			)
+		}
+	</section>
+</LayoutAdmin>

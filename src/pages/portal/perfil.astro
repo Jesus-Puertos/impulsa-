@@ -1,0 +1,272 @@
+---
+// Portal - Perfil del socio
+// ------------
+// Edición de los datos que el socio puede mantener por su cuenta. Los campos
+// de identidad (CURP, nombre) no se editan aquí: cambiarlos exige presentar
+// documento original en sucursal.
+
+export const prerender = false
+
+import LayoutPortal from '../../layouts/LayoutPortal.astro'
+import { clienteServidor } from '../../lib/supabase/server'
+import { validarTelefono, validarCodigoPostal, validarClabe } from '../../lib/validaciones'
+import { fecha, ETIQUETAS_ESTADO_SOCIO } from '../../lib/formato'
+import { nombreCompleto } from '../../lib/auth'
+
+const { perfil } = Astro.locals
+const socioId = perfil!.socio_id
+if (!socioId) return Astro.redirect('/registro')
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const leer = (k: string) => String(datos.get(k) ?? '').trim()
+
+	const telefono = leer('telefono')
+	const cp = leer('codigo_postal')
+	const clabe = leer('clabe')
+
+	const validaciones = [
+		validarTelefono(telefono),
+		validarCodigoPostal(cp, false),
+		validarClabe(clabe, false)
+	]
+	const fallo = validaciones.find((v) => !v.valido)
+
+	if (fallo) {
+		mensaje = { tipo: 'error', texto: fallo.mensaje! }
+	} else {
+		const { error } = await supabase
+			.from('socios')
+			.update({
+				telefono,
+				telefono_alterno: leer('telefono_alterno') || null,
+				correo: leer('correo') || null,
+				calle: leer('calle') || null,
+				numero_exterior: leer('numero_exterior') || null,
+				numero_interior: leer('numero_interior') || null,
+				colonia: leer('colonia') || null,
+				municipio: leer('municipio') || null,
+				entidad: leer('entidad') || null,
+				codigo_postal: cp || null,
+				referencia_domicilio: leer('referencia_domicilio') || null,
+				ocupacion: leer('ocupacion') || null,
+				nombre_empresa: leer('nombre_empresa') || null,
+				ingreso_mensual: Number(leer('ingreso_mensual')) || null,
+				egresos_mensuales: Number(leer('egresos_mensuales')) || null,
+				banco: leer('banco') || null,
+				clabe: clabe || null
+			})
+			.eq('id', socioId)
+
+		mensaje = error
+			? { tipo: 'error', texto: 'No pudimos guardar tus cambios. Inténtalo de nuevo.' }
+			: { tipo: 'exito', texto: 'Tus datos se actualizaron correctamente.' }
+	}
+}
+
+const { data: socio } = await supabase.from('socios').select('*').eq('id', socioId).single()
+const restablecer = Astro.url.searchParams.get('restablecer') === '1'
+---
+
+<LayoutPortal title="Mi perfil | Cooperativa Impulsa" activo="perfil">
+	<h1 class="h2 mb-8">Mi perfil</h1>
+
+	{
+		restablecer && (
+			<div class="aviso aviso--info">
+				<p>
+					Para cambiar tu contraseña usa la opción de tu gestor de sesión o solicita un nuevo
+					enlace desde <a href="/recuperar">recuperar contraseña</a>.
+				</p>
+			</div>
+		)
+	}
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	<div class="grid gap-6 lg:grid-cols-[20rem_1fr]">
+		{/* Identidad, solo lectura */}
+		<aside class="panel h-fit">
+			<h2 class="panel__titulo">Tu identidad</h2>
+			<dl class="space-y-3 text-sm">
+				<div>
+					<dt class="text-xs text-neutral-500 dark:text-neutral-400">Nombre completo</dt>
+					<dd class="font-medium">{nombreCompleto(socio!)}</dd>
+				</div>
+				<div>
+					<dt class="text-xs text-neutral-500 dark:text-neutral-400">CURP</dt>
+					<dd class="font-mono text-xs tracking-wide">{socio!.curp}</dd>
+				</div>
+				<div>
+					<dt class="text-xs text-neutral-500 dark:text-neutral-400">Número de socio</dt>
+					<dd class="font-medium">{socio!.numero_socio ?? 'Pendiente de asignar'}</dd>
+				</div>
+				<div>
+					<dt class="text-xs text-neutral-500 dark:text-neutral-400">Situación</dt>
+					<dd>
+						<span class={`estado estado--${socio!.estado}`}>
+							{ETIQUETAS_ESTADO_SOCIO[socio!.estado]}
+						</span>
+					</dd>
+				</div>
+				{
+					socio!.fecha_alta && (
+						<div>
+							<dt class="text-xs text-neutral-500 dark:text-neutral-400">Socio desde</dt>
+							<dd>{fecha(socio!.fecha_alta, 'larga')}</dd>
+						</div>
+					)
+				}
+			</dl>
+			<p class="small mt-5 mb-0">
+				Para corregir tu nombre o tu CURP acude a tu sucursal con tu documento original.
+			</p>
+		</aside>
+
+		{/* Datos editables */}
+		<form method="POST" class="panel">
+			<h2 class="panel__titulo">Datos de contacto</h2>
+
+			<div class="campo--fila">
+				<div class="campo">
+					<label for="telefono">Teléfono celular</label>
+					<input id="telefono" name="telefono" type="tel" value={socio!.telefono ?? ''} required />
+				</div>
+				<div class="campo">
+					<label for="telefono_alterno">Teléfono alterno</label>
+					<input
+						id="telefono_alterno"
+						name="telefono_alterno"
+						type="tel"
+						value={socio!.telefono_alterno ?? ''}
+					/>
+				</div>
+			</div>
+
+			<div class="campo">
+				<label for="correo">Correo electrónico</label>
+				<input id="correo" name="correo" type="email" value={socio!.correo ?? ''} />
+				<span class="campo__ayuda">
+					Cambiar este correo no cambia el que usas para entrar al portal.
+				</span>
+			</div>
+
+			<h2 class="panel__titulo mt-8">Domicilio</h2>
+
+			<div class="campo--fila">
+				<div class="campo">
+					<label for="calle">Calle</label>
+					<input id="calle" name="calle" value={socio!.calle ?? ''} />
+				</div>
+				<div class="grid grid-cols-2 gap-4">
+					<div class="campo">
+						<label for="numero_exterior">Núm. ext.</label>
+						<input id="numero_exterior" name="numero_exterior" value={socio!.numero_exterior ?? ''} />
+					</div>
+					<div class="campo">
+						<label for="numero_interior">Núm. int.</label>
+						<input id="numero_interior" name="numero_interior" value={socio!.numero_interior ?? ''} />
+					</div>
+				</div>
+			</div>
+
+			<div class="campo--fila">
+				<div class="campo">
+					<label for="colonia">Colonia o localidad</label>
+					<input id="colonia" name="colonia" value={socio!.colonia ?? ''} />
+				</div>
+				<div class="campo">
+					<label for="codigo_postal">Código postal</label>
+					<input id="codigo_postal" name="codigo_postal" maxlength="5" value={socio!.codigo_postal ?? ''} />
+				</div>
+			</div>
+
+			<div class="campo--fila">
+				<div class="campo">
+					<label for="municipio">Municipio</label>
+					<input id="municipio" name="municipio" value={socio!.municipio ?? ''} />
+				</div>
+				<div class="campo">
+					<label for="entidad">Estado</label>
+					<input id="entidad" name="entidad" value={socio!.entidad ?? ''} />
+				</div>
+			</div>
+
+			<div class="campo">
+				<label for="referencia_domicilio">Referencias para llegar</label>
+				<textarea id="referencia_domicilio" name="referencia_domicilio"
+					>{socio!.referencia_domicilio ?? ''}</textarea
+				>
+			</div>
+
+			<h2 class="panel__titulo mt-8">Tu actividad económica</h2>
+
+			<div class="campo--fila">
+				<div class="campo">
+					<label for="ocupacion">Ocupación</label>
+					<input id="ocupacion" name="ocupacion" value={socio!.ocupacion ?? ''} />
+				</div>
+				<div class="campo">
+					<label for="nombre_empresa">Empresa o negocio</label>
+					<input id="nombre_empresa" name="nombre_empresa" value={socio!.nombre_empresa ?? ''} />
+				</div>
+			</div>
+
+			<div class="campo--fila">
+				<div class="campo">
+					<label for="ingreso_mensual">Ingreso mensual</label>
+					<input
+						id="ingreso_mensual"
+						name="ingreso_mensual"
+						type="number"
+						min="0"
+						step="100"
+						value={socio!.ingreso_mensual ?? ''}
+					/>
+					<span class="campo__ayuda">Mantenerlo al día mejora tu capacidad de crédito.</span>
+				</div>
+				<div class="campo">
+					<label for="egresos_mensuales">Gastos fijos al mes</label>
+					<input
+						id="egresos_mensuales"
+						name="egresos_mensuales"
+						type="number"
+						min="0"
+						step="100"
+						value={socio!.egresos_mensuales ?? ''}
+					/>
+				</div>
+			</div>
+
+			<h2 class="panel__titulo mt-8">Datos bancarios</h2>
+			<p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+				A esta cuenta depositamos si te autorizamos un crédito.
+			</p>
+
+			<div class="campo--fila">
+				<div class="campo">
+					<label for="banco">Banco</label>
+					<input id="banco" name="banco" value={socio!.banco ?? ''} />
+				</div>
+				<div class="campo">
+					<label for="clabe">CLABE interbancaria</label>
+					<input id="clabe" name="clabe" maxlength="18" value={socio!.clabe ?? ''} />
+					<span class="campo__ayuda">18 dígitos.</span>
+				</div>
+			</div>
+
+			<div class="mt-6 flex justify-end border-t border-neutral-200 pt-6 dark:border-neutral-800">
+				<button type="submit" class="btn btn--primario">Guardar cambios</button>
+			</div>
+		</form>
+	</div>
+</LayoutPortal>

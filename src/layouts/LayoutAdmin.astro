@@ -1,0 +1,238 @@
+---
+// Layout del panel administrativo
+// ------------
+// Navegación lateral filtrada por rol: cada persona solo ve las secciones que
+// su rol puede usar. Esto es comodidad, no seguridad — quien escriba la URL a
+// mano sigue topándose con RLS y con las validaciones de cada endpoint.
+
+import Header from '../components/blocks/head/Header.astro'
+import MarcaImpulsa from '../components/ui/MarcaImpulsa.astro'
+import Scripts from '../components/scripts/ThemeScripts.astro'
+import { iniciales, ETIQUETAS_ROL, alcanzaRol, type Rol } from '../lib/auth'
+import '../styles/global.css'
+
+type Props = {
+	title?: string
+	activo?: string
+}
+
+const { title, activo } = Astro.props
+const perfil = Astro.locals.perfil!
+
+interface Seccion {
+	id: string
+	nombre: string
+	href: string
+	/** Rol mínimo en la jerarquía socio < promotor < cajero < analista < gerente < admin. */
+	minimo: Rol
+	grupo: string
+}
+
+const SECCIONES: Seccion[] = [
+	{ id: 'inicio', nombre: 'Panel', href: '/admin', minimo: 'promotor', grupo: 'Operación' },
+	{ id: 'socios', nombre: 'Socios', href: '/admin/socios', minimo: 'promotor', grupo: 'Operación' },
+	{
+		id: 'solicitudes',
+		nombre: 'Solicitudes',
+		href: '/admin/solicitudes',
+		minimo: 'promotor',
+		grupo: 'Operación'
+	},
+	{
+		id: 'creditos',
+		nombre: 'Cartera',
+		href: '/admin/creditos',
+		minimo: 'cajero',
+		grupo: 'Operación'
+	},
+	{
+		id: 'cobranza',
+		nombre: 'Cobranza',
+		href: '/admin/cobranza',
+		minimo: 'cajero',
+		grupo: 'Operación'
+	},
+	{
+		id: 'ahorro',
+		nombre: 'Ahorro',
+		href: '/admin/ahorro',
+		minimo: 'cajero',
+		grupo: 'Operación'
+	},
+	{
+		id: 'productos',
+		nombre: 'Productos',
+		href: '/admin/productos',
+		minimo: 'gerente',
+		grupo: 'Catálogos'
+	},
+	{
+		id: 'sucursales',
+		nombre: 'Sucursales',
+		href: '/admin/sucursales',
+		minimo: 'gerente',
+		grupo: 'Catálogos'
+	},
+	{
+		id: 'contenido',
+		nombre: 'Contenido del sitio',
+		href: '/admin/contenido',
+		minimo: 'promotor',
+		grupo: 'Contenido'
+	},
+	{
+		id: 'mensajes',
+		nombre: 'Mensajes y prospectos',
+		href: '/admin/mensajes',
+		minimo: 'promotor',
+		grupo: 'Contenido'
+	},
+	{
+		id: 'usuarios',
+		nombre: 'Personal',
+		href: '/admin/usuarios',
+		minimo: 'admin',
+		grupo: 'Administración'
+	},
+	{
+		id: 'configuracion',
+		nombre: 'Configuración',
+		href: '/admin/configuracion',
+		minimo: 'admin',
+		grupo: 'Administración'
+	},
+	{
+		id: 'bitacora',
+		nombre: 'Bitácora',
+		href: '/admin/bitacora',
+		minimo: 'gerente',
+		grupo: 'Administración'
+	}
+]
+
+const visibles = SECCIONES.filter((s) => alcanzaRol(perfil.rol, s.minimo))
+const grupos = [...new Set(visibles.map((s) => s.grupo))]
+---
+
+<!doctype html>
+<html lang="es-MX" class="mode-auto">
+	<Header title={title ?? 'Panel administrativo | Cooperativa Impulsa'} noindex={true} />
+	<body class="bg-neutral-100! bg-none! dark:bg-neutral-950!">
+		<div class="flex min-h-screen">
+			{/* ------------------------------------------------ Barra lateral */}
+			<aside
+				id="admin-lateral"
+				class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full overflow-y-auto border-r border-neutral-200 bg-white transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 dark:border-neutral-800 dark:bg-neutral-900"
+			>
+				<div class="border-b border-neutral-200 p-4 dark:border-neutral-800">
+					<MarcaImpulsa tamano="sm" enlace="/admin" />
+					<p class="mt-2 mb-0 text-[0.65rem] tracking-wider text-neutral-500 uppercase">
+						Panel administrativo
+					</p>
+				</div>
+
+				<nav aria-label="Secciones del panel" class="p-3">
+					{
+						grupos.map((grupo) => (
+							<div class="mb-5">
+								<p class="mb-1.5 px-3 text-[0.65rem] tracking-wider text-neutral-400 uppercase">
+									{grupo}
+								</p>
+								<ul class="space-y-0.5">
+									{visibles
+										.filter((s) => s.grupo === grupo)
+										.map((s) => (
+											<li>
+												<a
+													href={s.href}
+													aria-current={activo === s.id ? 'page' : undefined}
+													class:list={[
+														'block rounded-sm px-3 py-2 text-sm transition-colors',
+														activo === s.id
+															? 'bg-primary-600 text-white'
+															: 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
+													]}
+												>
+													{s.nombre}
+												</a>
+											</li>
+										))}
+								</ul>
+							</div>
+						))
+					}
+				</nav>
+
+				<div class="mt-auto border-t border-neutral-200 p-4 dark:border-neutral-800">
+					<div class="mb-3 flex items-center gap-2.5">
+						<span
+							class="bg-primary-600 flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+							aria-hidden="true">{iniciales(perfil)}</span
+						>
+						<span class="min-w-0 text-sm">
+							<span class="block truncate leading-tight font-medium">{perfil.nombre}</span>
+							<span class="block text-xs text-neutral-500 dark:text-neutral-400">
+								{ETIQUETAS_ROL[perfil.rol]}
+							</span>
+						</span>
+					</div>
+					<form method="POST" action="/api/auth/salir">
+						<button type="submit" class="btn btn--contorno btn--sm w-full">Cerrar sesión</button>
+					</form>
+				</div>
+			</aside>
+
+			{/* ------------------------------------------------- Contenido */}
+			<div class="min-w-0 flex-1">
+				<header
+					class="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-neutral-200 bg-white px-4 lg:hidden dark:border-neutral-800 dark:bg-neutral-900"
+				>
+					<button
+						id="admin-menu"
+						class="btn btn--fantasma btn--sm"
+						aria-controls="admin-lateral"
+						aria-expanded="false"
+					>
+						<span class="sr-only">Abrir menú</span>
+						<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round"></path>
+						</svg>
+					</button>
+					<MarcaImpulsa tamano="sm" enlace="/admin" soloIsotipo />
+				</header>
+
+				<main class="p-4 lg:p-8">
+					<slot />
+				</main>
+			</div>
+		</div>
+
+		<Scripts />
+
+		<script>
+			// Menú lateral en móvil. Se usa un listener simple porque el panel no
+			// necesita hidratación de framework.
+			const boton = document.getElementById('admin-menu')
+			const lateral = document.getElementById('admin-lateral')
+
+			boton?.addEventListener('click', () => {
+				const abierto = lateral?.classList.toggle('translate-x-0')
+				lateral?.classList.toggle('-translate-x-full', !abierto)
+				boton.setAttribute('aria-expanded', String(Boolean(abierto)))
+			})
+		</script>
+
+		<style>
+			@reference '../styles/global.css';
+			main a:not(.btn) {
+				@apply text-primary-700 hover:text-primary-800 dark:text-primary-300;
+			}
+			#admin-lateral {
+				@apply flex flex-col;
+			}
+			#admin-lateral nav {
+				@apply flex-1;
+			}
+		</style>
+	</body>
+</html>

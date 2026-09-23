@@ -1,0 +1,113 @@
+---
+// Recuperación de contraseña
+// ------------
+// Envía el correo de restablecimiento. La respuesta es siempre la misma tenga
+// o no cuenta el correo: confirmar la existencia de una cuenta permitiría
+// enumerar el padrón de socios.
+
+export const prerender = false
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import MarcaImpulsa from '../components/ui/MarcaImpulsa.astro'
+import { clienteServidor } from '../lib/supabase/server'
+import { validarCorreo } from '../lib/validaciones'
+
+let enviado = false
+let error: string | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const correo = String(datos.get('correo') ?? '').trim()
+	const validacion = validarCorreo(correo)
+
+	if (!validacion.valido) {
+		error = validacion.mensaje!
+	} else {
+		const supabase = clienteServidor(Astro.cookies)
+		const sitio = import.meta.env.PUBLIC_SITE_URL ?? Astro.url.origin
+
+		await supabase.auth.resetPasswordForEmail(correo, {
+			redirectTo: `${sitio}/portal/perfil?restablecer=1`
+		})
+
+		enviado = true
+	}
+}
+---
+
+<Layout
+	title="Recuperar contraseña | Cooperativa Impulsa"
+	description="Restablece la contraseña de tu portal del socio."
+	navigation="none"
+	footer="none"
+>
+	<Section spacerTop={false} spacerBottom={false}>
+		<Row classes="min-h-screen items-center">
+			<Col span="5" start="5" classes="py-16">
+				<div class="mb-8 flex justify-center">
+					<MarcaImpulsa tamano="lg" />
+				</div>
+
+				<div class="panel">
+					{
+						enviado ? (
+							<>
+								<h1 class="h3 mb-3 text-center">Revisa tu correo</h1>
+								<div class="aviso aviso--exito">
+									<p>
+										Si ese correo está registrado con nosotros, en unos minutos recibirás un
+										enlace para crear una contraseña nueva. El enlace vence en una hora.
+									</p>
+								</div>
+								<p class="text-sm text-neutral-500 dark:text-neutral-400">
+									¿No te llegó? Revisa la carpeta de correo no deseado. Si sigue sin aparecer,
+									acude a tu sucursal con tu identificación y te ayudamos.
+								</p>
+								<a href="/acceso" class="btn btn--contorno w-full">
+									Volver a la pantalla de acceso
+								</a>
+							</>
+						) : (
+							<>
+								<h1 class="h3 mb-1 text-center">¿Olvidaste tu contraseña?</h1>
+								<p class="mb-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
+									Escribe tu correo y te enviamos un enlace para crear una nueva.
+								</p>
+
+								{error && (
+									<div class="aviso aviso--error" role="alert">
+										<p>{error}</p>
+									</div>
+								)}
+
+								<form method="POST" novalidate>
+									<div class="campo">
+										<label for="correo">Correo electrónico</label>
+										<input
+											id="correo"
+											name="correo"
+											type="email"
+											autocomplete="email"
+											required
+											placeholder="nombre@dominio.com"
+										/>
+									</div>
+									<button type="submit" class="btn btn--primario w-full">
+										Enviar enlace de recuperación
+									</button>
+								</form>
+
+								<p class="mt-6 mb-0 text-center text-sm">
+									<a href="/acceso">← Volver</a>
+								</p>
+							</>
+						)
+					}
+				</div>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

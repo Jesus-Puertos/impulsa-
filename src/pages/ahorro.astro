@@ -1,0 +1,150 @@
+---
+// Ahorro e inversión (público)
+export const prerender = false
+
+import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import Button from '../components/ui/Button.astro'
+import CalculadoraAhorro from '../components/impulsa/CalculadoraAhorro'
+import { clienteServidor } from '../lib/supabase/server'
+import { pesos, porcentaje } from '../lib/formato'
+
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
+
+const { data: productos } = await supabase
+	.from('productos_ahorro')
+	.select('*')
+	.eq('activo', true)
+	.order('orden')
+---
+
+<Layout
+	title="Ahorro e inversión | Cooperativa Impulsa"
+	description="Ahorro a la vista, ahorro programado e inversión a plazo fijo. Conoce rendimientos, montos mínimos y plazos."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" classes="py-16 lg:py-24">
+				<span class="h5">Ahorro e inversión</span>
+				<h1>El ahorro de los socios financia a los socios</h1>
+				<p class="text-lead">
+					Lo que ahorras aquí no se va a un accionista externo: se convierte en el crédito que
+					otro socio necesita, y el rendimiento se queda en la comunidad.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	{/* Instrumentos */}
+	<Section decorationBorder="bottom">
+		<Row classes="pt-16">
+			<Col span="8" style="transparent">
+				<h2>Nuestros instrumentos</h2>
+			</Col>
+		</Row>
+
+		<Row classes="pb-16" style="transparent" decorationBorder="none">
+			{
+				(productos ?? []).map((p) => (
+					<Col span="6" spanTablet="12" classes="p-6 border border-neutral-200 dark:border-neutral-800">
+						<div class="mb-4 flex items-start justify-between gap-4">
+							<div>
+								<h3 class="mb-1 text-xl">{p.nombre}</h3>
+								<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">{p.descripcion}</p>
+							</div>
+							<div class="shrink-0 text-right">
+								<span class="font-display text-campo-600 dark:text-campo-400 block text-3xl leading-none">
+									{porcentaje(p.tasa_anual)}
+								</span>
+								<span class="text-xs text-neutral-500">anual</span>
+							</div>
+						</div>
+
+						{p.descripcion_larga && <p class="text-sm">{p.descripcion_larga}</p>}
+
+						<dl class="space-y-1.5 border-t border-dashed border-neutral-200 pt-4 text-sm dark:border-neutral-700">
+							<div class="flex justify-between gap-3">
+								<dt class="text-neutral-500 dark:text-neutral-400">Apertura mínima</dt>
+								<dd class="tabular-nums">{pesos(p.monto_minimo_apertura)}</dd>
+							</div>
+							<div class="flex justify-between gap-3">
+								<dt class="text-neutral-500 dark:text-neutral-400">Plazo</dt>
+								<dd>{p.plazo_dias ? `${p.plazo_dias} días` : 'Sin plazo forzoso'}</dd>
+							</div>
+							<div class="flex justify-between gap-3">
+								<dt class="text-neutral-500 dark:text-neutral-400">Retiro anticipado</dt>
+								<dd>
+									{p.permite_retiro_anticipado
+										? p.penalizacion_retiro_pct > 0
+											? `Con ${porcentaje(p.penalizacion_retiro_pct)} de penalización`
+											: 'Sin penalización'
+										: 'No permitido'}
+								</dd>
+							</div>
+							{p.aportacion_sugerida && (
+								<div class="flex justify-between gap-3">
+									<dt class="text-neutral-500 dark:text-neutral-400">Aportación sugerida</dt>
+									<dd class="tabular-nums">{pesos(p.aportacion_sugerida)}</dd>
+								</div>
+							)}
+						</dl>
+					</Col>
+				))
+			}
+		</Row>
+	</Section>
+
+	{/* Calculadora */}
+	<Section decorationBorder="bottom" id="calculadora">
+		<Row classes="pt-16">
+			<Col span="8" style="transparent">
+				<span class="h5">Calculadora</span>
+				<h2>Cuánto puedes juntar</h2>
+				<p>
+					Proyecta tu ahorro con aportaciones periódicas y rendimiento compuesto. Es una
+					estimación: las tasas las revisa el Consejo de Administración.
+				</p>
+			</Col>
+		</Row>
+
+		<Row classes="pb-16" style="transparent" decorationBorder="none">
+			<Col span="12" style="transparent">
+				<CalculadoraAhorro client:load productos={productos ?? []} />
+			</Col>
+		</Row>
+	</Section>
+
+	{/* Cómo abrir */}
+	<Section spacerBottom={false}>
+		<Row classes="py-16">
+			<Col span="5" style="transparent">
+				<h2>Cómo abrir tu cuenta</h2>
+			</Col>
+			<Col span="6" start="7" style="transparent">
+				<ol>
+					<li>
+						<strong>Hazte socio.</strong> Si aún no lo eres, regístrate en línea y completa tu
+						expediente.
+					</li>
+					<li>
+						<strong>Acude a tu sucursal</strong> con tu identificación. La apertura se firma en
+						persona.
+					</li>
+					<li>
+						<strong>Haz tu depósito inicial</strong> por el monto mínimo del instrumento que
+						elijas.
+					</li>
+					<li>
+						<strong>Consulta tu saldo</strong> cuando quieras desde el portal del socio.
+					</li>
+				</ol>
+				<div class="mt-8 flex flex-wrap gap-3">
+					<Button link="/registro">Hazte socio</Button>
+					<Button link="/sucursales" style="neutral">Ver sucursales</Button>
+				</div>
+			</Col>
+		</Row>
+	</Section>
+</Layout>

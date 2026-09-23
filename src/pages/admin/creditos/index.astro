@@ -1,0 +1,161 @@
+---
+// Panel - Cartera de créditos
+export const prerender = false
+
+import LayoutAdmin from '../../../layouts/LayoutAdmin.astro'
+import { pesos, pesosCortos, porcentaje, fecha, ETIQUETAS_ESTADO_CREDITO } from '../../../lib/formato'
+import type { EstadoCredito } from '../../../lib/supabase/database.types'
+
+const { supabase } = Astro.locals
+const params = Astro.url.searchParams
+
+const filtro = params.get('estado') ?? 'activos'
+const busqueda = params.get('q')?.trim() ?? ''
+
+let consulta = supabase.from('v_creditos_detalle').select('*', { count: 'exact' })
+
+if (filtro === 'activos') {
+	consulta = consulta.in('estado', ['vigente', 'atrasado'])
+} else if (filtro !== 'todos') {
+	consulta = consulta.eq('estado', filtro as EstadoCredito)
+}
+
+if (busqueda) {
+	consulta = consulta.or(
+		`socio_nombre.ilike.%${busqueda}%,folio.ilike.%${busqueda}%,numero_socio.ilike.%${busqueda}%`
+	)
+}
+
+const { data: creditos, count } = await consulta
+	.order('dias_mora', { ascending: false })
+	.order('fecha_desembolso', { ascending: false })
+	.limit(200)
+
+const saldoTotal = (creditos ?? []).reduce((s, c) => s + Number(c.saldo_total), 0)
+const enMora = (creditos ?? []).filter((c) => c.estado === 'atrasado')
+const saldoMora = enMora.reduce((s, c) => s + Number(c.saldo_total), 0)
+
+const FILTROS = [
+	{ valor: 'activos', etiqueta: 'Activos' },
+	{ valor: 'atrasado', etiqueta: 'En mora' },
+	{ valor: 'liquidado', etiqueta: 'Liquidados' },
+	{ valor: 'castigado', etiqueta: 'Castigados' },
+	{ valor: 'todos', etiqueta: 'Todos' }
+]
+---
+
+<LayoutAdmin title="Cartera | Panel Impulsa" activo="creditos">
+	<div class="mb-6">
+		<h1 class="h2 mb-1">Cartera de crédito</h1>
+		<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+			{count ?? 0} crédito(s) · {pesosCortos(saldoTotal)} de saldo
+			{enMora.length > 0 && ` · ${enMora.length} en mora por ${pesosCortos(saldoMora)}`}
+		</p>
+	</div>
+
+	<div class="panel mb-6 flex flex-wrap items-end gap-4">
+		<div class="flex flex-wrap gap-1.5">
+			{
+				FILTROS.map((f) => (
+					<a
+						href={`?estado=${f.valor}${busqueda ? `&q=${encodeURIComponent(busqueda)}` : ''}`}
+						class:list={[
+							'btn btn--sm no-underline!',
+							filtro === f.valor ? 'btn--primario' : 'btn--contorno'
+						]}
+					>
+						{f.etiqueta}
+					</a>
+				))
+			}
+		</div>
+
+		<form method="GET" class="ml-auto flex items-end gap-2">
+			<input type="hidden" name="estado" value={filtro} />
+			<div class="campo mb-0! w-64">
+				<label for="q" class="sr-only">Buscar</label>
+				<input id="q" name="q" type="search" value={busqueda} placeholder="Socio o folio" />
+			</div>
+			<button type="submit" class="btn btn--contorno">Buscar</button>
+		</form>
+	</div>
+
+	<div class="panel">
+		{
+			creditos && creditos.length > 0 ? (
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Folio</th>
+								<th>Socio</th>
+								<th>Producto</th>
+								<th class="num">Original</th>
+								<th class="num">Saldo</th>
+								<th>Avance</th>
+								<th>Próximo pago</th>
+								<th>Mora</th>
+								<th>Situación</th>
+								<th />
+							</tr>
+						</thead>
+						<tbody>
+							{creditos.map((c) => (
+								<tr>
+									<td class="text-xs">{c.folio}</td>
+									<td>
+										<a href={`/admin/socios/${c.socio_id}`} class="font-medium">
+											{c.socio_nombre}
+										</a>
+										<span class="block text-xs text-neutral-500">{c.numero_socio ?? '—'}</span>
+									</td>
+									<td class="text-xs">{c.producto_nombre}</td>
+									<td class="num">{pesos(c.monto_principal)}</td>
+									<td class="num font-medium">{pesos(c.saldo_total)}</td>
+									<td class="w-28">
+										<div
+											class="h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700"
+											role="progressbar"
+											aria-valuenow={c.porcentaje_amortizado}
+											aria-valuemin="0"
+											aria-valuemax="100"
+											aria-label="Avance"
+										>
+											<span
+												class="bg-campo-500 block h-full"
+												style={`width: ${c.porcentaje_amortizado}%`}
+											/>
+										</div>
+										<span class="text-xs text-neutral-500">
+											{porcentaje(c.porcentaje_amortizado)}
+										</span>
+									</td>
+									<td class="text-xs">{fecha(c.proxima_fecha_pago)}</td>
+									<td>
+										{c.dias_mora > 0 ? (
+											<span class="estado estado--vencido">{c.dias_mora} d</span>
+										) : (
+											<span class="text-xs text-neutral-500">—</span>
+										)}
+									</td>
+									<td>
+										<span class={`estado estado--${c.estado}`}>
+											{ETIQUETAS_ESTADO_CREDITO[c.estado]}
+										</span>
+									</td>
+									<td>
+										<a href={`/admin/creditos/${c.id}`}>Abrir</a>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<p class="mb-0 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+					No hay créditos que coincidan con los filtros.
+				</p>
+			)
+		}
+	</div>
+</LayoutAdmin>

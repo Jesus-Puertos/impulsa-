@@ -1,63 +1,250 @@
 ---
-// Components
-// - Layout
+// Contacto
+// ------------
+// El formulario escribe en `mensajes_contacto`, que el personal atiende desde
+// /admin/mensajes. Se procesa en el servidor para que funcione sin JavaScript.
+
+export const prerender = false
+
 import Layout from '../layouts/Layout.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import { clienteServidor } from '../lib/supabase/server'
+import { validarCorreo, validarTelefono } from '../lib/validaciones'
 
-// - Blocks
-import Hero from '../components/blocks/hero/SimpleHeroBasic.astro'
-import ContactInfo from '../components/blocks/contact/ContactInfoCards.astro'
-import Brand from '../components/blocks/brand/Marquee.astro'
-import Faq from '../components/blocks/faq/StickyFaq.astro'
-import CTA from '../components/blocks/cta/CTAPrimary.astro'
+const supabase = Astro.locals.supabase ?? clienteServidor(Astro.cookies)
 
-// Content
-// - SEO
-const SEO = {
-	title: 'Mizu Light Astro Theme | Contact',
-	description:
-		'Get in touch with the Mizu Light team for support, customization, or partnership inquiries. We’re here to help you make the most of your Astro theme.'
+let enviado = false
+let error: string | null = null
+const previo: Record<string, string> = {}
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const txt = (k: string) => {
+		const v = String(datos.get(k) ?? '').trim()
+		previo[k] = v
+		return v
+	}
+
+	const nombre = txt('nombre')
+	const correo = txt('correo')
+	const telefono = txt('telefono')
+	const mensaje = txt('mensaje')
+
+	// Campo trampa: los formularios automatizados lo rellenan, las personas no
+	// lo ven. Si viene con algo, se acepta en silencio y no se guarda nada.
+	const trampa = String(datos.get('sitio_web') ?? '')
+
+	const validacionCorreo = validarCorreo(correo)
+	const validacionTelefono = telefono ? validarTelefono(telefono, false) : { valido: true }
+
+	if (trampa) {
+		enviado = true
+	} else if (nombre.length < 3) {
+		error = 'Escribe tu nombre.'
+	} else if (!validacionCorreo.valido) {
+		error = validacionCorreo.mensaje!
+	} else if (!validacionTelefono.valido) {
+		error = validacionTelefono.mensaje!
+	} else if (mensaje.length < 10) {
+		error = 'Cuéntanos un poco más para poder ayudarte.'
+	} else {
+		const { error: errorInsert } = await supabase.from('mensajes_contacto').insert({
+			nombre,
+			correo,
+			telefono: telefono || null,
+			asunto: txt('asunto') || null,
+			mensaje,
+			sucursal_id: txt('sucursal_id') || null,
+			origen: 'web'
+		})
+
+		if (errorInsert) {
+			error = 'No pudimos enviar tu mensaje. Inténtalo de nuevo o llámanos.'
+		} else {
+			enviado = true
+		}
+	}
 }
-// - Hero data
-const heroData = {
-	title: 'Got a question before take-off?',
-	subtitle: 'Let’s Connect',
-	text: 'Reach out directly to the team that can best help you. We’re here to answer questions and guide you ahead of launch.',
-}
-// - Contact data
-const contactData = {
-	title: 'Choose support, sales, or requests and let’s get started.'
-}
-// - Brand data
-const brandData = {
-	title: 'Built in collaboration with'
-}
-// - FAQ data
-const faqData = {
-	title: 'Everything you need to know',
-	subtitle: 'Frequently Asked Questions'
-}
-// - CTA data
-const ctaData = {
-	title: 'Let’s Build the Future Together',
-	text: 'We’re always looking for passionate, driven people to join our team. Even if you don’t see the perfect role listed, we’d still love to hear from you. Send us your CV and let’s explore how we can grow together.',
-	buttonLink: '/contact',
-	buttonText: 'Send Your CV'
-}
+
+const [{ data: sucursales }, { data: config }] = await Promise.all([
+	supabase.from('sucursales').select('id, nombre, telefono, correo').eq('activa', true).order('orden'),
+	supabase.from('configuracion').select('clave, valor').in('clave', [
+		'correo_contacto',
+		'telefono_contacto',
+		'whatsapp_contacto'
+	])
+])
+
+// La configuración es pública en estas tres llaves, pero RLS la restringe al
+// personal; si viene vacía se usan los datos de la matriz.
+const valor = (clave: string) =>
+	String((config ?? []).find((c) => c.clave === clave)?.valor ?? '').replace(/^"|"$/g, '')
+
+const matriz = (sucursales ?? [])[0]
+const correoContacto = valor('correo_contacto') || matriz?.correo || 'contacto@cooperativaimpulsa.mx'
+const telefonoContacto = valor('telefono_contacto') || matriz?.telefono || ''
 ---
 
-<Layout title={SEO.title} description={SEO.description}>
-	<Hero
-		title={heroData.title}
-		subtitle={heroData.subtitle}
-		text={heroData.text}
-	/>
-	<ContactInfo title={contactData.title} />
-	<Brand title={brandData.title} />
-	<Faq subtitle={faqData.subtitle} title={faqData.title} />
-	<CTA
-		title={ctaData.title}
-		text={ctaData.text}
-		buttonLink={ctaData.buttonLink}
-		buttonText={ctaData.buttonText}
-	/>
+<Layout
+	title="Contacto | Cooperativa Impulsa"
+	description="Escríbenos, llámanos o visita una sucursal. Atendemos dudas sobre crédito, ahorro y trámites de socios."
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row>
+			<Col span="8" classes="py-16 lg:py-24">
+				<span class="h5">Contacto</span>
+				<h1>Hablemos</h1>
+				<p class="text-lead">
+					Cuéntanos qué necesitas y te respondemos en un plazo máximo de dos días hábiles. Si es
+					urgente, llámanos.
+				</p>
+			</Col>
+		</Row>
+	</Section>
+
+	<Section spacerBottom={false}>
+		<Row classes="py-16">
+			{/* Formulario */}
+			<Col span="7" style="transparent">
+				{
+					enviado ? (
+						<div class="panel">
+							<div class="aviso aviso--exito mb-0">
+								<p>
+									<strong>Gracias, recibimos tu mensaje.</strong>
+								</p>
+								<p class="mb-0">
+									Te responderemos al correo que nos dejaste en un plazo máximo de dos días
+									hábiles. Si necesitas algo antes, llámanos al {telefonoContacto}.
+								</p>
+							</div>
+						</div>
+					) : (
+						<form method="POST" class="panel" novalidate>
+							<h2 class="panel__titulo">Escríbenos</h2>
+
+							{error && (
+								<div class="aviso aviso--error" role="alert">
+									<p>{error}</p>
+								</div>
+							)}
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="nombre">Tu nombre *</label>
+									<input id="nombre" name="nombre" value={previo.nombre ?? ''} required />
+								</div>
+								<div class="campo">
+									<label for="correo">Correo electrónico *</label>
+									<input id="correo" name="correo" type="email" value={previo.correo ?? ''} required />
+								</div>
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="telefono">Teléfono</label>
+									<input id="telefono" name="telefono" type="tel" value={previo.telefono ?? ''} />
+								</div>
+								<div class="campo">
+									<label for="sucursal_id">Sucursal de tu interés</label>
+									<select id="sucursal_id" name="sucursal_id">
+										<option value="">Cualquiera</option>
+										{(sucursales ?? []).map((s) => (
+											<option value={s.id} selected={previo.sucursal_id === s.id}>
+												{s.nombre}
+											</option>
+										))}
+									</select>
+								</div>
+							</div>
+
+							<div class="campo">
+								<label for="asunto">Asunto</label>
+								<select id="asunto" name="asunto">
+									<option value="Información sobre créditos">Información sobre créditos</option>
+									<option value="Información sobre ahorro">Información sobre ahorro</option>
+									<option value="Quiero hacerme socio">Quiero hacerme socio</option>
+									<option value="Ayuda con mi portal">Ayuda con mi portal</option>
+									<option value="Aclaración de pago">Aclaración de pago</option>
+									<option value="Otro">Otro</option>
+								</select>
+							</div>
+
+							<div class="campo">
+								<label for="mensaje">¿En qué te ayudamos? *</label>
+								<textarea id="mensaje" name="mensaje" rows="5" required>
+									{previo.mensaje ?? ''}
+								</textarea>
+							</div>
+
+							{/* Campo trampa contra formularios automatizados */}
+							<div class="hidden" aria-hidden="true">
+								<label for="sitio_web">No llenar</label>
+								<input id="sitio_web" name="sitio_web" tabindex="-1" autocomplete="off" />
+							</div>
+
+							<button type="submit" class="btn btn--primario">Enviar mensaje</button>
+
+							<p class="small mt-4 mb-0">
+								Al enviar aceptas nuestro <a href="/aviso-de-privacidad">aviso de privacidad</a>.
+								Usamos tus datos únicamente para responderte.
+							</p>
+						</form>
+					)
+				}
+			</Col>
+
+			{/* Datos directos */}
+			<Col span="4" start="9" style="transparent">
+				<div class="panel mb-4">
+					<h2 class="panel__titulo">Atención directa</h2>
+					<dl class="space-y-3 text-sm">
+						{
+							telefonoContacto && (
+								<div>
+									<dt class="text-xs text-neutral-500 dark:text-neutral-400">Teléfono</dt>
+									<dd>
+										<a href={`tel:${telefonoContacto.replace(/\D/g, '')}`}>{telefonoContacto}</a>
+									</dd>
+								</div>
+							)
+						}
+						<div>
+							<dt class="text-xs text-neutral-500 dark:text-neutral-400">Correo</dt>
+							<dd>
+								<a href={`mailto:${correoContacto}`}>{correoContacto}</a>
+							</dd>
+						</div>
+					</dl>
+				</div>
+
+				<div class="panel mb-4">
+					<h2 class="panel__titulo">¿Ya eres socio?</h2>
+					<p class="mb-4 text-sm">
+						Consulta tus créditos, tus pagos y tu ahorro desde el portal, sin esperar respuesta.
+					</p>
+					<a href="/acceso" class="btn btn--contorno btn--sm w-full">Entrar a mi portal</a>
+				</div>
+
+				<div class="panel">
+					<h2 class="panel__titulo">Sucursales</h2>
+					<ul class="mb-0 space-y-2 text-sm">
+						{
+							(sucursales ?? []).map((s) => (
+								<li class="ml-0! list-none pl-0!">
+									<strong>{s.nombre}</strong>
+									{s.telefono && (
+										<span class="block text-neutral-500 dark:text-neutral-400">{s.telefono}</span>
+									)}
+								</li>
+							))
+						}
+					</ul>
+					<a href="/sucursales" class="btn btn--fantasma btn--sm mt-3 px-0!">Ver direcciones →</a>
+				</div>
+			</Col>
+		</Row>
+	</Section>
 </Layout>

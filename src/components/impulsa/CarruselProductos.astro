@@ -1,0 +1,288 @@
+---
+// Carrusel de productos de crédito
+// ------------
+// Description: Ocupa el lado derecho de la portada. Muestra un producto por
+// vista con su icono, su rango de monto, su plazo y su tasa, y enlaza al
+// simulador ya filtrado por ese producto.
+//
+// El icono y el color salen del catálogo (`productos_credito.icono` y `.color`),
+// así que se pueden cambiar desde /admin sin tocar código. Ambos pasan por
+// `lib/iconos` para que un valor inválido no rompa la página.
+//
+// Sin JavaScript el carrusel sigue siendo utilizable: mientras Swiper no se
+// inicializa, la pista es un contenedor con desplazamiento horizontal y anclaje,
+// que es exactamente el mismo gesto en táctil.
+//
+// Properties:
+// - productos: catálogo activo, ya ordenado
+// - titulo: encabezado accesible del bloque
+
+import { Icon } from 'astro-icon/components'
+import type { ProductoCredito } from '../../lib/supabase/database.types'
+import { iconoDeCatalogo, paletaDeCatalogo } from '../../lib/iconos'
+import { pesos, porcentaje } from '../../lib/formato'
+import { ETIQUETAS_PERIODO } from '../../lib/credito'
+
+type Props = {
+	productos: ProductoCredito[]
+	titulo?: string
+}
+
+const { productos, titulo = 'Nuestros créditos' } = Astro.props
+
+const tarjetas = productos.map((producto) => ({
+	producto,
+	icono: iconoDeCatalogo(producto.icono),
+	paleta: paletaDeCatalogo(producto.color)
+}))
+---
+
+<section class="carrusel" data-carrusel aria-roledescription="carrusel" aria-label={titulo}>
+	<div class="carrusel__pista swiper">
+		<div class="swiper-wrapper">
+			{
+				tarjetas.map(({ producto, icono, paleta }, i) => (
+					<article
+						class="carrusel__slide swiper-slide"
+						role="group"
+						aria-roledescription="diapositiva"
+						aria-label={`${i + 1} de ${tarjetas.length}: ${producto.nombre}`}
+					>
+						<span class:list={['carrusel__filo', paleta.filo]} aria-hidden="true" />
+
+						<header class="carrusel__encabezado">
+							<span class:list={['carrusel__halo', paleta.halo]}>
+								<Icon name={icono} class="size-7" />
+							</span>
+							{producto.destacado && <span class="carrusel__insignia">Más solicitado</span>}
+						</header>
+
+						<h3 class="carrusel__nombre">{producto.nombre}</h3>
+						<p class="carrusel__texto">{producto.descripcion}</p>
+
+						<dl class="carrusel__datos">
+							<div>
+								<dt>Monto</dt>
+								<dd>
+									{pesos(producto.monto_minimo)} — {pesos(producto.monto_maximo)}
+								</dd>
+							</div>
+							<div>
+								<dt>Plazo</dt>
+								<dd>
+									{producto.plazo_minimo_periodos}-{producto.plazo_maximo_periodos}{' '}
+									{ETIQUETAS_PERIODO[producto.periodicidad]}
+								</dd>
+							</div>
+							<div>
+								<dt>Tasa anual</dt>
+								<dd class:list={['carrusel__tasa', paleta.acento]}>
+									{porcentaje(producto.tasa_anual)}
+								</dd>
+							</div>
+						</dl>
+
+						<a
+							href={`/simulador?producto=${producto.clave}`}
+							class="btn btn--primario btn--sm carrusel__accion"
+						>
+							Simular este crédito
+						</a>
+					</article>
+				))
+			}
+		</div>
+	</div>
+
+	{
+		tarjetas.length > 1 && (
+			<div class="carrusel__controles">
+				<button type="button" class="carrusel__flecha" data-carrusel-anterior aria-label="Producto anterior">
+					<Icon name="chevron-left" class="size-5" />
+				</button>
+
+				<div class="carrusel__puntos">
+					{tarjetas.map(({ producto }, i) => (
+						<button
+							type="button"
+							class="carrusel__punto"
+							data-carrusel-punto={i}
+							aria-label={`Ver ${producto.nombre}`}
+						/>
+					))}
+				</div>
+
+				<button type="button" class="carrusel__flecha" data-carrusel-siguiente aria-label="Producto siguiente">
+					<Icon name="chevron-right" class="size-5" />
+				</button>
+			</div>
+		)
+	}
+</section>
+
+<style>
+	@reference '../../styles/global.css';
+
+	/* `min-w-0` no es opcional. La columna que envuelve al carrusel es un
+	   contenedor flex en fila, donde el `min-width: auto` por defecto impide que
+	   un ítem se encoja por debajo de su contenido. Como el ancho de las
+	   diapositivas lo fija Swiper a partir del ancho del contenedor, sin esto el
+	   cálculo se vuelve circular y Chrome lo resuelve con su tope de 2^25 px:
+	   la tarjeta se va fuera de pantalla y con ella todo lo alineado a la
+	   derecha. Lo mismo para la pista dentro de esta columna flex. */
+	.carrusel {
+		@apply flex w-full min-w-0 flex-col gap-4;
+	}
+	.carrusel__pista {
+		@apply w-full min-w-0;
+	}
+
+	/* Antes de que Swiper tome el control, la pista es un carrusel nativo: se
+	   arrastra con el dedo y ancla en cada tarjeta. `swiper/css` fija
+	   `overflow: hidden`, de ahí la marca de importancia. */
+	.carrusel__pista:not(.swiper-initialized) {
+		@apply snap-x snap-mandatory overflow-x-auto!;
+	}
+	.carrusel__pista:not(.swiper-initialized) .carrusel__slide {
+		@apply snap-center;
+	}
+
+	.carrusel__slide {
+		@apply relative flex h-auto flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-950;
+	}
+
+	.carrusel__filo {
+		@apply absolute inset-x-0 top-0 h-1;
+	}
+
+	.carrusel__encabezado {
+		@apply mb-4 flex items-start justify-between gap-3;
+	}
+
+	.carrusel__halo {
+		@apply flex size-14 shrink-0 items-center justify-center rounded-full;
+	}
+
+	.carrusel__insignia {
+		@apply rounded-full border border-neutral-200 px-2.5 py-1 text-[0.65rem] font-semibold tracking-wider text-neutral-500 uppercase dark:border-neutral-700 dark:text-neutral-400;
+	}
+
+	.carrusel__nombre {
+		@apply mb-2 text-xl;
+	}
+
+	.carrusel__texto {
+		@apply mb-5 text-sm text-neutral-500 dark:text-neutral-400;
+	}
+
+	.carrusel__datos {
+		@apply mb-6 space-y-2 text-sm;
+	}
+	/* Empuja el botón al pie para que todas las tarjetas lo alineen a la misma
+	   altura, por larga que sea la descripción. */
+	.carrusel__accion {
+		@apply mt-auto;
+	}
+	.carrusel__datos > div {
+		@apply flex justify-between gap-3 border-b border-neutral-100 pb-2 last:border-0 dark:border-neutral-900;
+	}
+	.carrusel__datos dt {
+		@apply text-neutral-500;
+	}
+	.carrusel__datos dd {
+		@apply m-0 text-right tabular-nums;
+	}
+	.carrusel__tasa {
+		@apply font-semibold;
+	}
+
+	.carrusel__controles {
+		@apply flex items-center justify-center gap-4;
+	}
+
+	.carrusel__flecha {
+		@apply flex size-9 items-center justify-center rounded-full border border-neutral-200 text-neutral-600 transition-colors dark:border-neutral-700 dark:text-neutral-300;
+	}
+	.carrusel__flecha:hover {
+		@apply border-primary-600 text-primary-700 dark:border-primary-400 dark:text-primary-300;
+	}
+
+	.carrusel__puntos {
+		@apply flex items-center gap-2;
+	}
+
+	.carrusel__punto {
+		@apply size-2 rounded-full bg-neutral-300 transition-all dark:bg-neutral-700;
+	}
+	.carrusel__punto--activo {
+		@apply bg-primary-600 dark:bg-primary-400 w-5;
+	}
+</style>
+
+<script>
+	import Swiper from 'swiper'
+	import { A11y, Autoplay, Keyboard } from 'swiper/modules'
+
+	/** Swiper cuelga la instancia del propio nodo; sirve para no inicializar dos veces. */
+	type Pista = HTMLElement & { swiper?: unknown }
+
+	function iniciarCarruseles() {
+		document.querySelectorAll<HTMLElement>('[data-carrusel]').forEach((raiz) => {
+			const pista = raiz.querySelector<Pista>('.carrusel__pista')
+			if (!pista || pista.swiper) return
+
+			const puntos = Array.from(raiz.querySelectorAll<HTMLButtonElement>('[data-carrusel-punto]'))
+			const anterior = raiz.querySelector<HTMLButtonElement>('[data-carrusel-anterior]')
+			const siguiente = raiz.querySelector<HTMLButtonElement>('[data-carrusel-siguiente]')
+
+			// Con una sola tarjeta no hay nada que rotar, y a quien pide menos
+			// movimiento no se le impone un carrusel que avanza solo.
+			const sinMovimiento = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+			const rotable = puntos.length > 1
+
+			// El instance llega como argumento a propósito: `init` se dispara dentro
+			// del constructor, cuando la variable de la instancia aún no existe.
+			const marcarActivo = (instancia: { realIndex: number }) => {
+				puntos.forEach((punto, i) => {
+					const activo = i === instancia.realIndex
+					punto.classList.toggle('carrusel__punto--activo', activo)
+					punto.setAttribute('aria-current', activo ? 'true' : 'false')
+				})
+			}
+
+			const swiper = new Swiper(pista, {
+				modules: [A11y, Autoplay, Keyboard],
+				slidesPerView: 1,
+				spaceBetween: 24,
+				loop: rotable,
+				// Sin `autoHeight` las diapositivas se estiran a la más alta: las
+				// tarjetas quedan parejas y el bloque no da saltos de altura al pasar
+				// de un producto corto a uno largo.
+				speed: 450,
+				keyboard: { enabled: true, onlyInViewport: true },
+				a11y: {
+					prevSlideMessage: 'Producto anterior',
+					nextSlideMessage: 'Producto siguiente'
+				},
+				autoplay:
+					rotable && !sinMovimiento
+						? { delay: 6000, disableOnInteraction: false, pauseOnMouseEnter: true }
+						: false,
+				on: {
+					init: marcarActivo,
+					slideChange: marcarActivo
+				}
+			})
+
+			anterior?.addEventListener('click', () => swiper.slidePrev())
+			siguiente?.addEventListener('click', () => swiper.slideNext())
+			puntos.forEach((punto, i) => {
+				punto.addEventListener('click', () => swiper.slideToLoop(i))
+			})
+		})
+	}
+
+	iniciarCarruseles()
+	document.addEventListener('astro:page-load', iniciarCarruseles)
+	document.addEventListener('astro:after-swap', iniciarCarruseles)
+</script>

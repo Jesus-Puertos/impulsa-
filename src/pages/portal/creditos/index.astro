@@ -1,0 +1,158 @@
+---
+// Portal - Listado de créditos del socio
+export const prerender = false
+
+import LayoutPortal from '../../../layouts/LayoutPortal.astro'
+import { pesos, porcentaje, fecha, ETIQUETAS_ESTADO_CREDITO } from '../../../lib/formato'
+
+const { supabase, perfil } = Astro.locals
+const socioId = perfil!.socio_id
+if (!socioId) return Astro.redirect('/registro')
+
+const { data: creditos } = await supabase
+	.from('v_creditos_detalle')
+	.select('*')
+	.eq('socio_id', socioId)
+	.order('fecha_desembolso', { ascending: false })
+
+const activos = (creditos ?? []).filter((c) => ['vigente', 'atrasado'].includes(c.estado))
+const cerrados = (creditos ?? []).filter((c) => !['vigente', 'atrasado'].includes(c.estado))
+---
+
+<LayoutPortal title="Mis créditos | Cooperativa Impulsa" activo="creditos">
+	<h1 class="h2 mb-8">Mis créditos</h1>
+
+	{
+		activos.length === 0 && cerrados.length === 0 ? (
+			<div class="panel py-12 text-center">
+				<h2 class="h4">Aún no tienes créditos</h2>
+				<p class="text-neutral-500 dark:text-neutral-400">
+					Cuando se te autorice y desembolse un crédito, aparecerá aquí con su tabla de pagos
+					completa.
+				</p>
+				<a href="/simulador" class="btn btn--primario">
+					Simular un crédito
+				</a>
+			</div>
+		) : (
+			<>
+				{activos.length > 0 && (
+					<section class="mb-10">
+						<h2 class="h4 mb-4">Vigentes</h2>
+						<div class="grid gap-4 md:grid-cols-2">
+							{activos.map((c) => (
+								<article class="panel">
+									<div class="mb-3 flex items-start justify-between gap-3">
+										<div>
+											<h3 class="mb-0 text-lg">{c.producto_nombre}</h3>
+											<p class="mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+												{c.folio} · Desembolsado el {fecha(c.fecha_desembolso)}
+											</p>
+										</div>
+										<span class={`estado estado--${c.estado}`}>
+											{ETIQUETAS_ESTADO_CREDITO[c.estado]}
+										</span>
+									</div>
+
+									<dl class="mb-4 grid grid-cols-2 gap-3 text-sm">
+										<div>
+											<dt class="text-xs text-neutral-500 dark:text-neutral-400">Saldo total</dt>
+											<dd class="text-base font-semibold tabular-nums">{pesos(c.saldo_total)}</dd>
+										</div>
+										<div>
+											<dt class="text-xs text-neutral-500 dark:text-neutral-400">Pago periódico</dt>
+											<dd class="text-base font-semibold tabular-nums">
+												{pesos(c.pago_periodico)}
+											</dd>
+										</div>
+										<div>
+											<dt class="text-xs text-neutral-500 dark:text-neutral-400">Próximo pago</dt>
+											<dd class="tabular-nums">{fecha(c.proxima_fecha_pago)}</dd>
+										</div>
+										<div>
+											<dt class="text-xs text-neutral-500 dark:text-neutral-400">Tasa anual</dt>
+											<dd class="tabular-nums">{porcentaje(c.tasa_anual)}</dd>
+										</div>
+									</dl>
+
+									<div
+										class="mb-2 h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700"
+										role="progressbar"
+										aria-valuenow={c.porcentaje_amortizado}
+										aria-valuemin="0"
+										aria-valuemax="100"
+										aria-label="Avance de pago"
+									>
+										<span
+											class="bg-campo-500 block h-full rounded-full"
+											style={`width: ${c.porcentaje_amortizado}%`}
+										/>
+									</div>
+									<p class="mb-4 text-xs text-neutral-500 dark:text-neutral-400">
+										{porcentaje(c.porcentaje_amortizado)} amortizado · {c.cuotas_pagadas} de{' '}
+										{c.plazo_periodos} pagos
+									</p>
+
+									{c.estado === 'atrasado' && (
+										<div class="aviso aviso--error mb-4">
+											<p>
+												Llevas {c.dias_mora} días de atraso. El saldo incluye{' '}
+												{pesos(c.saldo_moratorio)} de intereses moratorios.
+											</p>
+										</div>
+									)}
+
+									<a href={`/portal/creditos/${c.id}`} class="btn btn--contorno btn--sm">
+										Ver detalle y tabla de pagos
+									</a>
+								</article>
+							))}
+						</div>
+					</section>
+				)}
+
+				{cerrados.length > 0 && (
+					<section>
+						<h2 class="h4 mb-4">Historial</h2>
+						<div class="panel">
+							<div class="tabla-scroll">
+								<table class="tabla-datos">
+									<thead>
+										<tr>
+											<th>Folio</th>
+											<th>Producto</th>
+											<th>Desembolso</th>
+											<th class="num">Monto</th>
+											<th class="num">Total pagado</th>
+											<th>Situación</th>
+											<th />
+										</tr>
+									</thead>
+									<tbody>
+										{cerrados.map((c) => (
+											<tr>
+												<td>{c.folio}</td>
+												<td>{c.producto_nombre}</td>
+												<td>{fecha(c.fecha_desembolso)}</td>
+												<td class="num">{pesos(c.monto_principal)}</td>
+												<td class="num">{pesos(c.total_pagado)}</td>
+												<td>
+													<span class={`estado estado--${c.estado}`}>
+														{ETIQUETAS_ESTADO_CREDITO[c.estado]}
+													</span>
+												</td>
+												<td>
+													<a href={`/portal/creditos/${c.id}`}>Ver</a>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</section>
+				)}
+			</>
+		)
+	}
+</LayoutPortal>

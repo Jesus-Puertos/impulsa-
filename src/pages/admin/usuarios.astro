@@ -1,0 +1,315 @@
+---
+// Panel - Personal y roles
+// ------------
+// Solo un administrador llega aquí (lo filtra el middleware y lo reafirma RLS).
+// El alta usa la clave de servicio porque crear cuentas en Supabase Auth es una
+// operación privilegiada que no puede hacerse con la sesión del navegador.
+
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { clienteAdmin } from '../../lib/supabase/server'
+import { ETIQUETAS_ROL, nombreCompleto, type Rol, alcanzaRol } from '../../lib/auth'
+import { fechaHora } from '../../lib/formato'
+import { validarCorreo } from '../../lib/validaciones'
+
+const { supabase, perfil } = Astro.locals
+
+// El middleware ya exigio que sea personal; aqui se acota al rol minimo
+// que esta seccion requiere. RLS lo reafirma en la base.
+if (!alcanzaRol(perfil!.rol, 'admin')) return Astro.redirect('/admin')
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const accion = String(datos.get('accion') ?? '')
+	const txt = (k: string) => String(datos.get(k) ?? '').trim()
+
+	if (accion === 'crear') {
+		const correo = txt('correo').toLowerCase()
+		const contrasena = txt('contrasena')
+		const validacion = validarCorreo(correo)
+
+		if (!validacion.valido) {
+			mensaje = { tipo: 'error', texto: validacion.mensaje! }
+		} else if (contrasena.length < 10) {
+			mensaje = {
+				tipo: 'error',
+				texto: 'Las cuentas de personal requieren contraseña de al menos 10 caracteres.'
+			}
+		} else {
+			try {
+				const admin = clienteAdmin()
+
+				const { data, error } = await admin.auth.admin.createUser({
+					email: correo,
+					password: contrasena,
+					// El personal se crea desde adentro: no tiene sentido pedirle que
+					// confirme un correo que ya conocemos.
+					email_confirm: true,
+					user_metadata: {
+						nombre: txt('nombre'),
+						apellido_paterno: txt('apellido_paterno'),
+						apellido_materno: txt('apellido_materno') || null,
+						telefono: txt('telefono') || null
+					}
+				})
+
+				if (error) throw new Error(error.message)
+
+				// El trigger creó el perfil con rol `socio`; aquí se asigna el real.
+				const { error: errorRol } = await admin
+					.from('perfiles')
+					.update({
+						rol: txt('rol') as Rol,
+						sucursal_id: txt('sucursal_id') || null,
+						nombre: txt('nombre'),
+						apellido_paterno: txt('apellido_paterno'),
+						apellido_materno: txt('apellido_materno') || null,
+						telefono: txt('telefono') || null
+					})
+					.eq('id', data.user!.id)
+
+				if (errorRol) throw new Error(errorRol.message)
+
+				mensaje = {
+					tipo: 'exito',
+					texto: `Cuenta creada para ${correo} con rol ${ETIQUETAS_ROL[txt('rol') as Rol]}.`
+				}
+			} catch (e) {
+				mensaje = {
+					tipo: 'error',
+					texto: e instanceof Error ? e.message : 'No se pudo crear la cuenta.'
+				}
+			}
+		}
+	} else if (accion === 'cambiar_rol') {
+		const id = txt('id')
+
+		// Un admin que se degrada a sí mismo pierde el acceso al panel y no puede
+		// revertirlo. Se impide desde aquí.
+		if (id === perfil!.id) {
+			mensaje = { tipo: 'error', texto: 'No puedes cambiar tu propio rol.' }
+		} else {
+			const { error } = await supabase
+				.from('perfiles')
+				.update({ rol: txt('rol') as Rol, sucursal_id: txt('sucursal_id') || null })
+				.eq('id', id)
+
+			mensaje = error
+				? { tipo: 'error', texto: `No se pudo actualizar: ${error.message}` }
+				: { tipo: 'exito', texto: 'Rol actualizado.' }
+		}
+	} else if (accion === 'alternar_activo') {
+		const id = txt('id')
+
+		if (id === perfil!.id) {
+			mensaje = { tipo: 'error', texto: 'No puedes desactivar tu propia cuenta.' }
+		} else {
+			await supabase
+				.from('perfiles')
+				.update({ activo: txt('activo_nuevo') === 'true' })
+				.eq('id', id)
+			mensaje = { tipo: 'exito', texto: 'Estado de la cuenta actualizado.' }
+		}
+	}
+}
+
+const [{ data: personal }, { data: sucursales }] = await Promise.all([
+	supabase.from('perfiles').select('*').neq('rol', 'socio').order('rol', { ascending: false }),
+	supabase.from('sucursales').select('id, nombre').eq('activa', true).order('orden')
+])
+
+const ROLES: Rol[] = ['promotor', 'cajero', 'analista', 'gerente', 'admin']
+const nuevo = Astro.url.searchParams.get('nuevo') === '1'
+---
+
+<LayoutAdmin title="Personal | Panel Impulsa" activo="usuarios">
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Personal</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				{personal?.length ?? 0} cuenta(s) con acceso al panel.
+			</p>
+		</div>
+		<a href="?nuevo=1" class="btn btn--primario">Dar de alta</a>
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	{
+		nuevo && (
+			<section class="panel mb-6">
+				<h2 class="panel__titulo">Nueva cuenta de personal</h2>
+				<form method="POST">
+					<input type="hidden" name="accion" value="crear" />
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="nombre">Nombre(s)</label>
+							<input id="nombre" name="nombre" required />
+						</div>
+						<div class="campo">
+							<label for="apellido_paterno">Apellido paterno</label>
+							<input id="apellido_paterno" name="apellido_paterno" required />
+						</div>
+					</div>
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="apellido_materno">Apellido materno</label>
+							<input id="apellido_materno" name="apellido_materno" />
+						</div>
+						<div class="campo">
+							<label for="telefono">Teléfono</label>
+							<input id="telefono" name="telefono" type="tel" />
+						</div>
+					</div>
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="correo">Correo institucional</label>
+							<input id="correo" name="correo" type="email" required />
+						</div>
+						<div class="campo">
+							<label for="contrasena">Contraseña provisional</label>
+							<input id="contrasena" name="contrasena" type="text" minlength="10" required />
+							<span class="campo__ayuda">
+								Mínimo 10 caracteres. Pídele que la cambie en su primer acceso.
+							</span>
+						</div>
+					</div>
+
+					<div class="campo--fila">
+						<div class="campo">
+							<label for="rol">Rol</label>
+							<select id="rol" name="rol" required>
+								{ROLES.map((r) => (
+									<option value={r}>{ETIQUETAS_ROL[r]}</option>
+								))}
+							</select>
+						</div>
+						<div class="campo">
+							<label for="sucursal_id">Sucursal</label>
+							<select id="sucursal_id" name="sucursal_id">
+								<option value="">Sin adscripción</option>
+								{(sucursales ?? []).map((s) => (
+									<option value={s.id}>{s.nombre}</option>
+								))}
+							</select>
+						</div>
+					</div>
+
+					<div class="aviso aviso--alerta">
+						<p>
+							Recuerda el alcance de cada rol: <strong>promotor</strong> capta socios,
+							<strong> cajero</strong> registra pagos, <strong>analista</strong> dictamina,
+							<strong> gerente</strong> desembolsa y <strong>admin</strong> puede todo, incluida
+							esta pantalla.
+						</p>
+					</div>
+
+					<div class="flex gap-2">
+						<button type="submit" class="btn btn--primario">Crear cuenta</button>
+						<a href="/admin/usuarios" class="btn btn--fantasma">Cancelar</a>
+					</div>
+				</form>
+			</section>
+		)
+	}
+
+	<section class="panel">
+		<div class="tabla-scroll">
+			<table class="tabla-datos">
+				<thead>
+					<tr>
+						<th>Persona</th>
+						<th>Correo</th>
+						<th>Rol y sucursal</th>
+						<th>Último acceso</th>
+						<th>Estado</th>
+						<th />
+					</tr>
+				</thead>
+				<tbody>
+					{
+						(personal ?? []).map((p) => (
+							<tr>
+								<td>
+									<span class="font-medium">{nombreCompleto(p)}</span>
+									{p.id === perfil!.id && (
+										<span class="estado estado--aprobado ml-2">Tú</span>
+									)}
+								</td>
+								<td class="text-xs">{p.correo}</td>
+								<td>
+									<form method="POST" class="flex flex-wrap items-center gap-1.5">
+										<input type="hidden" name="accion" value="cambiar_rol" />
+										<input type="hidden" name="id" value={p.id} />
+										<select name="rol" class="mb-0! h-9! w-32 px-2! text-xs" disabled={p.id === perfil!.id}>
+											{ROLES.map((r) => (
+												<option value={r} selected={p.rol === r}>
+													{ETIQUETAS_ROL[r]}
+												</option>
+											))}
+										</select>
+										<select name="sucursal_id" class="mb-0! h-9! w-36 px-2! text-xs" disabled={p.id === perfil!.id}>
+											<option value="">Sin sucursal</option>
+											{(sucursales ?? []).map((s) => (
+												<option value={s.id} selected={p.sucursal_id === s.id}>
+													{s.nombre}
+												</option>
+											))}
+										</select>
+										{p.id !== perfil!.id && (
+											<button type="submit" class="btn btn--contorno btn--sm">
+												Aplicar
+											</button>
+										)}
+									</form>
+								</td>
+								<td class="text-xs">{p.ultimo_acceso ? fechaHora(p.ultimo_acceso) : '—'}</td>
+								<td>
+									<span class={`estado estado--${p.activo ? 'activo' : 'inactivo'}`}>
+										{p.activo ? 'Activa' : 'Desactivada'}
+									</span>
+								</td>
+								<td>
+									{p.id !== perfil!.id && (
+										<form method="POST">
+											<input type="hidden" name="accion" value="alternar_activo" />
+											<input type="hidden" name="id" value={p.id} />
+											<input type="hidden" name="activo_nuevo" value={String(!p.activo)} />
+											<button
+												type="submit"
+												class:list={[
+													'btn btn--sm',
+													p.activo ? 'btn--peligro' : 'btn--contorno'
+												]}
+											>
+												{p.activo ? 'Desactivar' : 'Reactivar'}
+											</button>
+										</form>
+									)}
+								</td>
+							</tr>
+						))
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	<div class="aviso aviso--info mt-6">
+		<p>
+			Desactivar una cuenta corta el acceso de inmediato pero conserva su rastro en la bitácora y
+			en los expedientes que haya dictaminado. Es preferible a borrarla.
+		</p>
+	</div>
+</LayoutAdmin>

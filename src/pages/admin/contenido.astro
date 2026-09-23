@@ -1,0 +1,658 @@
+---
+// Panel - CMS del sitio público
+// ------------
+// Un solo lugar para todo lo editorial: artículos, testimonios, preguntas
+// frecuentes y avisos. Se resuelve con pestañas y formularios POST porque el
+// volumen de contenido de una cooperativa no justifica un editor complejo.
+
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { fecha, aSlug, recortar } from '../../lib/formato'
+import { nombreCompleto } from '../../lib/auth'
+import type { EstadoPublicacion } from '../../lib/supabase/database.types'
+
+const { supabase, perfil } = Astro.locals
+let mensaje: { tipo: 'exito' | 'error'; texto: string } | null = null
+
+if (Astro.request.method === 'POST') {
+	const datos = await Astro.request.formData()
+	const accion = String(datos.get('accion') ?? '')
+	const txt = (k: string) => String(datos.get(k) ?? '').trim()
+	const id = txt('id')
+
+	if (accion === 'guardar_entrada') {
+		const titulo = txt('titulo')
+		const registro = {
+			titulo,
+			slug: txt('slug') || aSlug(titulo),
+			resumen: txt('resumen') || null,
+			contenido: txt('contenido'),
+			categoria: txt('categoria') || 'Educación financiera',
+			etiquetas: txt('etiquetas').split(',').map((e) => e.trim()).filter(Boolean),
+			imagen_portada: txt('imagen_portada') || null,
+			estado: txt('estado') as EstadoPublicacion,
+			destacado: datos.get('destacado') === 'on',
+			minutos_lectura: Number(datos.get('minutos_lectura')) || null,
+			seo_titulo: txt('seo_titulo') || null,
+			seo_descripcion: txt('seo_descripcion') || null,
+			autor_id: perfil!.id,
+			autor_nombre: nombreCompleto(perfil!)
+		}
+
+		const { error } = id
+			? await supabase.from('entradas_blog').update(registro).eq('id', id)
+			: await supabase.from('entradas_blog').insert(registro)
+
+		mensaje = error
+			? {
+					tipo: 'error',
+					texto:
+						error.code === '23505'
+							? 'Ya existe un artículo con esa dirección (slug). Cambia el título o el slug.'
+							: `No se pudo guardar: ${error.message}`
+				}
+			: { tipo: 'exito', texto: `Artículo «${titulo}» guardado.` }
+	} else if (accion === 'guardar_testimonio') {
+		const registro = {
+			nombre: txt('nombre'),
+			cargo: txt('cargo') || null,
+			texto: txt('texto'),
+			sucursal: txt('sucursal') || null,
+			calificacion: Number(datos.get('calificacion')) || null,
+			estado: txt('estado') as EstadoPublicacion,
+			orden: Number(datos.get('orden')) || 0
+		}
+
+		const { error } = id
+			? await supabase.from('testimonios').update(registro).eq('id', id)
+			: await supabase.from('testimonios').insert(registro)
+
+		mensaje = error
+			? { tipo: 'error', texto: `No se pudo guardar: ${error.message}` }
+			: { tipo: 'exito', texto: 'Testimonio guardado.' }
+	} else if (accion === 'guardar_pregunta') {
+		const registro = {
+			categoria: txt('categoria') || 'General',
+			pregunta: txt('pregunta'),
+			respuesta: txt('respuesta'),
+			orden: Number(datos.get('orden')) || 0,
+			estado: txt('estado') as EstadoPublicacion
+		}
+
+		const { error } = id
+			? await supabase.from('preguntas_frecuentes').update(registro).eq('id', id)
+			: await supabase.from('preguntas_frecuentes').insert(registro)
+
+		mensaje = error
+			? { tipo: 'error', texto: `No se pudo guardar: ${error.message}` }
+			: { tipo: 'exito', texto: 'Pregunta guardada.' }
+	} else if (accion === 'guardar_aviso') {
+		const registro = {
+			titulo: txt('titulo'),
+			mensaje: txt('mensaje'),
+			tipo: txt('tipo') || 'info',
+			enlace: txt('enlace') || null,
+			texto_enlace: txt('texto_enlace') || null,
+			termina_en: txt('termina_en') ? new Date(txt('termina_en')).toISOString() : null,
+			activo: datos.get('activo') === 'on'
+		}
+
+		const { error } = id
+			? await supabase.from('avisos').update(registro).eq('id', id)
+			: await supabase.from('avisos').insert(registro)
+
+		mensaje = error
+			? { tipo: 'error', texto: `No se pudo guardar: ${error.message}` }
+			: { tipo: 'exito', texto: 'Aviso guardado.' }
+	} else if (accion === 'eliminar') {
+		const tabla = txt('tabla')
+		const permitidas = ['entradas_blog', 'testimonios', 'preguntas_frecuentes', 'avisos']
+
+		if (!permitidas.includes(tabla)) {
+			mensaje = { tipo: 'error', texto: 'Operación no permitida.' }
+		} else {
+			const { error } = await supabase.from(tabla as 'avisos').delete().eq('id', id)
+			mensaje = error
+				? { tipo: 'error', texto: 'No se pudo eliminar.' }
+				: { tipo: 'exito', texto: 'Elemento eliminado.' }
+		}
+	}
+}
+
+const [{ data: entradas }, { data: testimonios }, { data: preguntas }, { data: avisos }] =
+	await Promise.all([
+		supabase.from('entradas_blog').select('*').order('creado_en', { ascending: false }),
+		supabase.from('testimonios').select('*').order('orden'),
+		supabase.from('preguntas_frecuentes').select('*').order('categoria').order('orden'),
+		supabase.from('avisos').select('*').order('creado_en', { ascending: false })
+	])
+
+const params = Astro.url.searchParams
+const tab = params.get('tab') ?? 'articulos'
+const editarId = params.get('editar')
+const nuevo = params.get('nuevo') === '1'
+
+const entrada = editarId ? (entradas ?? []).find((e) => e.id === editarId) : null
+const testimonio = editarId ? (testimonios ?? []).find((t) => t.id === editarId) : null
+const pregunta = editarId ? (preguntas ?? []).find((p) => p.id === editarId) : null
+const aviso = editarId ? (avisos ?? []).find((a) => a.id === editarId) : null
+
+const TABS = [
+	{ id: 'articulos', etiqueta: 'Artículos', total: entradas?.length ?? 0 },
+	{ id: 'testimonios', etiqueta: 'Testimonios', total: testimonios?.length ?? 0 },
+	{ id: 'preguntas', etiqueta: 'Preguntas frecuentes', total: preguntas?.length ?? 0 },
+	{ id: 'avisos', etiqueta: 'Avisos', total: avisos?.length ?? 0 }
+]
+---
+
+<LayoutAdmin title="Contenido | Panel Impulsa" activo="contenido">
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Contenido del sitio</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				Lo que publiques aquí aparece de inmediato en el sitio público.
+			</p>
+		</div>
+		<a href={`?tab=${tab}&nuevo=1`} class="btn btn--primario">Crear nuevo</a>
+	</div>
+
+	{
+		mensaje && (
+			<div class={`aviso aviso--${mensaje.tipo}`} role="status">
+				<p>{mensaje.texto}</p>
+			</div>
+		)
+	}
+
+	<nav class="panel mb-6 flex flex-wrap gap-1.5" aria-label="Tipos de contenido">
+		{
+			TABS.map((t) => (
+				<a
+					href={`?tab=${t.id}`}
+					class:list={['btn btn--sm no-underline!', tab === t.id ? 'btn--primario' : 'btn--contorno']}
+				>
+					{t.etiqueta} ({t.total})
+				</a>
+			))
+		}
+	</nav>
+
+	{/* ==================================================== ARTÍCULOS */}
+	{
+		tab === 'articulos' && (
+			<>
+				{(entrada || nuevo) && (
+					<section class="panel mb-6">
+						<h2 class="panel__titulo">{entrada ? 'Editar artículo' : 'Nuevo artículo'}</h2>
+						<form method="POST">
+							<input type="hidden" name="accion" value="guardar_entrada" />
+							{entrada && <input type="hidden" name="id" value={entrada.id} />}
+
+							<div class="campo">
+								<label for="titulo">Título</label>
+								<input id="titulo" name="titulo" value={entrada?.titulo ?? ''} required />
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="slug">Dirección (slug)</label>
+									<input id="slug" name="slug" value={entrada?.slug ?? ''} placeholder="se-genera-del-titulo" />
+									<span class="campo__ayuda">Si lo dejas vacío se genera del título.</span>
+								</div>
+								<div class="campo">
+									<label for="categoria">Categoría</label>
+									<input id="categoria" name="categoria" value={entrada?.categoria ?? 'Educación financiera'} list="categorias" />
+									<datalist id="categorias">
+										<option value="Educación financiera" />
+										<option value="Ahorro" />
+										<option value="Crédito" />
+										<option value="Cooperativismo" />
+										<option value="Noticias" />
+									</datalist>
+								</div>
+							</div>
+
+							<div class="campo">
+								<label for="resumen">Resumen</label>
+								<textarea id="resumen" name="resumen" rows="2">{entrada?.resumen ?? ''}</textarea>
+								<span class="campo__ayuda">Se muestra en el listado y en redes sociales.</span>
+							</div>
+
+							<div class="campo">
+								<label for="contenido">Contenido (Markdown)</label>
+								<textarea id="contenido" name="contenido" rows="16" class="font-mono! text-sm!" required>
+									{entrada?.contenido ?? ''}
+								</textarea>
+								<span class="campo__ayuda">
+									Usa ## para subtítulos, **negritas** y - para listas.
+								</span>
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="etiquetas">Etiquetas (separadas por coma)</label>
+									<input id="etiquetas" name="etiquetas" value={(entrada?.etiquetas ?? []).join(', ')} />
+								</div>
+								<div class="campo">
+									<label for="minutos_lectura">Minutos de lectura</label>
+									<input id="minutos_lectura" name="minutos_lectura" type="number" min="1" value={entrada?.minutos_lectura ?? ''} />
+								</div>
+							</div>
+
+							<div class="campo">
+								<label for="imagen_portada">URL de la imagen de portada</label>
+								<input id="imagen_portada" name="imagen_portada" value={entrada?.imagen_portada ?? ''} placeholder="https://…" />
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="seo_titulo">Título SEO</label>
+									<input id="seo_titulo" name="seo_titulo" value={entrada?.seo_titulo ?? ''} />
+								</div>
+								<div class="campo">
+									<label for="seo_descripcion">Descripción SEO</label>
+									<input id="seo_descripcion" name="seo_descripcion" value={entrada?.seo_descripcion ?? ''} />
+								</div>
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="estado">Estado</label>
+									<select id="estado" name="estado">
+										<option value="borrador" selected={entrada?.estado === 'borrador'}>Borrador</option>
+										<option value="publicado" selected={entrada?.estado === 'publicado'}>Publicado</option>
+										<option value="archivado" selected={entrada?.estado === 'archivado'}>Archivado</option>
+									</select>
+								</div>
+								<label class="mb-6 flex items-center gap-2 self-end text-sm">
+									<input type="checkbox" name="destacado" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={entrada?.destacado ?? false} />
+									Destacar en la portada
+								</label>
+							</div>
+
+							<div class="flex gap-2">
+								<button type="submit" class="btn btn--primario">Guardar artículo</button>
+								<a href="?tab=articulos" class="btn btn--fantasma">Cancelar</a>
+							</div>
+						</form>
+					</section>
+				)}
+
+				<section class="panel">
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Título</th>
+									<th>Categoría</th>
+									<th>Autor</th>
+									<th>Publicado</th>
+									<th class="num">Vistas</th>
+									<th>Estado</th>
+									<th />
+								</tr>
+							</thead>
+							<tbody>
+								{(entradas ?? []).map((e) => (
+									<tr>
+										<td>
+											<span class="font-medium">{e.titulo}</span>
+											{e.destacado && <span class="estado estado--aprobado ml-2">Destacado</span>}
+											<span class="block text-xs text-neutral-500">/{e.slug}</span>
+										</td>
+										<td class="text-xs">{e.categoria}</td>
+										<td class="text-xs">{e.autor_nombre ?? '—'}</td>
+										<td class="text-xs">{e.publicado_en ? fecha(e.publicado_en) : '—'}</td>
+										<td class="num">{e.vistas}</td>
+										<td>
+											<span class={`estado estado--${e.estado === 'publicado' ? 'aprobado' : 'borrador'}`}>
+												{e.estado}
+											</span>
+										</td>
+										<td class="whitespace-nowrap">
+											<a href={`?tab=articulos&editar=${e.id}`}>Editar</a>
+											{e.estado === 'publicado' && (
+												<>
+													{' · '}
+													<a href={`/blog/${e.slug}`} target="_blank" rel="noopener">Ver</a>
+												</>
+											)}
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				</section>
+			</>
+		)
+	}
+
+	{/* ==================================================== TESTIMONIOS */}
+	{
+		tab === 'testimonios' && (
+			<>
+				{(testimonio || nuevo) && (
+					<section class="panel mb-6">
+						<h2 class="panel__titulo">{testimonio ? 'Editar testimonio' : 'Nuevo testimonio'}</h2>
+						<form method="POST">
+							<input type="hidden" name="accion" value="guardar_testimonio" />
+							{testimonio && <input type="hidden" name="id" value={testimonio.id} />}
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="nombre">Nombre del socio</label>
+									<input id="nombre" name="nombre" value={testimonio?.nombre ?? ''} required />
+								</div>
+								<div class="campo">
+									<label for="cargo">Descripción</label>
+									<input id="cargo" name="cargo" value={testimonio?.cargo ?? ''} placeholder="Socia desde 2019 · Productora de café" />
+								</div>
+							</div>
+
+							<div class="campo">
+								<label for="texto">Testimonio</label>
+								<textarea id="texto" name="texto" rows="4" required>{testimonio?.texto ?? ''}</textarea>
+								<span class="campo__ayuda">
+									Publícalo solo con autorización expresa del socio.
+								</span>
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="sucursal">Sucursal</label>
+									<input id="sucursal" name="sucursal" value={testimonio?.sucursal ?? ''} />
+								</div>
+								<div class="campo">
+									<label for="calificacion">Calificación (1-5)</label>
+									<input id="calificacion" name="calificacion" type="number" min="1" max="5" value={testimonio?.calificacion ?? 5} />
+								</div>
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="estado">Estado</label>
+									<select id="estado" name="estado">
+										<option value="borrador" selected={testimonio?.estado === 'borrador'}>Borrador</option>
+										<option value="publicado" selected={testimonio?.estado === 'publicado'}>Publicado</option>
+										<option value="archivado" selected={testimonio?.estado === 'archivado'}>Archivado</option>
+									</select>
+								</div>
+								<div class="campo">
+									<label for="orden">Orden</label>
+									<input id="orden" name="orden" type="number" value={testimonio?.orden ?? 0} />
+								</div>
+							</div>
+
+							<div class="flex gap-2">
+								<button type="submit" class="btn btn--primario">Guardar</button>
+								<a href="?tab=testimonios" class="btn btn--fantasma">Cancelar</a>
+							</div>
+						</form>
+					</section>
+				)}
+
+				<section class="panel">
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Socio</th>
+									<th>Testimonio</th>
+									<th class="num">Calificación</th>
+									<th>Estado</th>
+									<th />
+								</tr>
+							</thead>
+							<tbody>
+								{(testimonios ?? []).map((t) => (
+									<tr>
+										<td>
+											<span class="font-medium">{t.nombre}</span>
+											<span class="block text-xs text-neutral-500">{t.cargo ?? '—'}</span>
+										</td>
+										<td class="max-w-md text-xs">{recortar(t.texto, 140)}</td>
+										<td class="num">{t.calificacion ?? '—'}</td>
+										<td>
+											<span class={`estado estado--${t.estado === 'publicado' ? 'aprobado' : 'borrador'}`}>
+												{t.estado}
+											</span>
+										</td>
+										<td class="whitespace-nowrap">
+											<a href={`?tab=testimonios&editar=${t.id}`}>Editar</a>
+											{' · '}
+											<form method="POST" class="inline">
+												<input type="hidden" name="accion" value="eliminar" />
+												<input type="hidden" name="tabla" value="testimonios" />
+												<input type="hidden" name="id" value={t.id} />
+												<button type="submit" class="btn btn--fantasma btn--sm px-0! text-red-600!">
+													Eliminar
+												</button>
+											</form>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				</section>
+			</>
+		)
+	}
+
+	{/* ==================================================== PREGUNTAS */}
+	{
+		tab === 'preguntas' && (
+			<>
+				{(pregunta || nuevo) && (
+					<section class="panel mb-6">
+						<h2 class="panel__titulo">{pregunta ? 'Editar pregunta' : 'Nueva pregunta'}</h2>
+						<form method="POST">
+							<input type="hidden" name="accion" value="guardar_pregunta" />
+							{pregunta && <input type="hidden" name="id" value={pregunta.id} />}
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="categoria">Categoría</label>
+									<input id="categoria" name="categoria" value={pregunta?.categoria ?? 'General'} list="cats-faq" />
+									<datalist id="cats-faq">
+										<option value="Hazte socio" />
+										<option value="Créditos" />
+										<option value="Ahorro" />
+										<option value="Portal" />
+										<option value="General" />
+									</datalist>
+								</div>
+								<div class="campo">
+									<label for="orden">Orden dentro de la categoría</label>
+									<input id="orden" name="orden" type="number" value={pregunta?.orden ?? 0} />
+								</div>
+							</div>
+
+							<div class="campo">
+								<label for="pregunta">Pregunta</label>
+								<input id="pregunta" name="pregunta" value={pregunta?.pregunta ?? ''} required />
+							</div>
+
+							<div class="campo">
+								<label for="respuesta">Respuesta</label>
+								<textarea id="respuesta" name="respuesta" rows="5" required>{pregunta?.respuesta ?? ''}</textarea>
+								<span class="campo__ayuda">
+									Responde en lenguaje llano, como se lo explicarías a un socio en ventanilla.
+								</span>
+							</div>
+
+							<div class="campo">
+								<label for="estado">Estado</label>
+								<select id="estado" name="estado" class="max-w-48">
+									<option value="publicado" selected={pregunta?.estado !== 'borrador'}>Publicada</option>
+									<option value="borrador" selected={pregunta?.estado === 'borrador'}>Borrador</option>
+								</select>
+							</div>
+
+							<div class="flex gap-2">
+								<button type="submit" class="btn btn--primario">Guardar</button>
+								<a href="?tab=preguntas" class="btn btn--fantasma">Cancelar</a>
+							</div>
+						</form>
+					</section>
+				)}
+
+				<section class="panel">
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Categoría</th>
+									<th>Pregunta</th>
+									<th>Estado</th>
+									<th />
+								</tr>
+							</thead>
+							<tbody>
+								{(preguntas ?? []).map((p) => (
+									<tr>
+										<td class="text-xs">{p.categoria}</td>
+										<td>
+											<span class="font-medium">{p.pregunta}</span>
+											<span class="block text-xs text-neutral-500">{recortar(p.respuesta, 120)}</span>
+										</td>
+										<td>
+											<span class={`estado estado--${p.estado === 'publicado' ? 'aprobado' : 'borrador'}`}>
+												{p.estado}
+											</span>
+										</td>
+										<td class="whitespace-nowrap">
+											<a href={`?tab=preguntas&editar=${p.id}`}>Editar</a>
+											{' · '}
+											<form method="POST" class="inline">
+												<input type="hidden" name="accion" value="eliminar" />
+												<input type="hidden" name="tabla" value="preguntas_frecuentes" />
+												<input type="hidden" name="id" value={p.id} />
+												<button type="submit" class="btn btn--fantasma btn--sm px-0! text-red-600!">
+													Eliminar
+												</button>
+											</form>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				</section>
+			</>
+		)
+	}
+
+	{/* ==================================================== AVISOS */}
+	{
+		tab === 'avisos' && (
+			<>
+				{(aviso || nuevo) && (
+					<section class="panel mb-6">
+						<h2 class="panel__titulo">{aviso ? 'Editar aviso' : 'Nuevo aviso'}</h2>
+						<form method="POST">
+							<input type="hidden" name="accion" value="guardar_aviso" />
+							{aviso && <input type="hidden" name="id" value={aviso.id} />}
+
+							<div class="campo">
+								<label for="titulo">Título</label>
+								<input id="titulo" name="titulo" value={aviso?.titulo ?? ''} required />
+							</div>
+
+							<div class="campo">
+								<label for="mensaje">Mensaje</label>
+								<textarea id="mensaje" name="mensaje" rows="2" required>{aviso?.mensaje ?? ''}</textarea>
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="tipo">Tono</label>
+									<select id="tipo" name="tipo">
+										<option value="info" selected={aviso?.tipo === 'info'}>Informativo</option>
+										<option value="exito" selected={aviso?.tipo === 'exito'}>Positivo</option>
+										<option value="alerta" selected={aviso?.tipo === 'alerta'}>Alerta</option>
+										<option value="error" selected={aviso?.tipo === 'error'}>Urgente</option>
+									</select>
+								</div>
+								<div class="campo">
+									<label for="termina_en">Vigente hasta</label>
+									<input id="termina_en" name="termina_en" type="date" value={aviso?.termina_en?.slice(0, 10) ?? ''} />
+									<span class="campo__ayuda">Vacío = sin fecha de término.</span>
+								</div>
+							</div>
+
+							<div class="campo--fila">
+								<div class="campo">
+									<label for="enlace">Enlace</label>
+									<input id="enlace" name="enlace" value={aviso?.enlace ?? ''} placeholder="/simulador" />
+								</div>
+								<div class="campo">
+									<label for="texto_enlace">Texto del enlace</label>
+									<input id="texto_enlace" name="texto_enlace" value={aviso?.texto_enlace ?? ''} />
+								</div>
+							</div>
+
+							<label class="mb-6 flex items-center gap-2 text-sm">
+								<input type="checkbox" name="activo" class="mb-0! size-4 accent-[var(--color-primary-600)]" checked={aviso?.activo ?? true} />
+								Activo
+							</label>
+
+							<div class="flex gap-2">
+								<button type="submit" class="btn btn--primario">Guardar</button>
+								<a href="?tab=avisos" class="btn btn--fantasma">Cancelar</a>
+							</div>
+						</form>
+					</section>
+				)}
+
+				<section class="panel">
+					<div class="tabla-scroll">
+						<table class="tabla-datos">
+							<thead>
+								<tr>
+									<th>Título</th>
+									<th>Mensaje</th>
+									<th>Tono</th>
+									<th>Vigencia</th>
+									<th>Estado</th>
+									<th />
+								</tr>
+							</thead>
+							<tbody>
+								{(avisos ?? []).map((a) => (
+									<tr>
+										<td class="font-medium">{a.titulo}</td>
+										<td class="max-w-md text-xs">{recortar(a.mensaje, 100)}</td>
+										<td class="text-xs">{a.tipo}</td>
+										<td class="text-xs">
+											{fecha(a.inicia_en)} — {a.termina_en ? fecha(a.termina_en) : 'sin límite'}
+										</td>
+										<td>
+											<span class={`estado estado--${a.activo ? 'activo' : 'inactivo'}`}>
+												{a.activo ? 'Activo' : 'Inactivo'}
+											</span>
+										</td>
+										<td class="whitespace-nowrap">
+											<a href={`?tab=avisos&editar=${a.id}`}>Editar</a>
+											{' · '}
+											<form method="POST" class="inline">
+												<input type="hidden" name="accion" value="eliminar" />
+												<input type="hidden" name="tabla" value="avisos" />
+												<input type="hidden" name="id" value={a.id} />
+												<button type="submit" class="btn btn--fantasma btn--sm px-0! text-red-600!">
+													Eliminar
+												</button>
+											</form>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				</section>
+			</>
+		)
+	}
+</LayoutAdmin>

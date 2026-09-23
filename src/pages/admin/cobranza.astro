@@ -1,0 +1,217 @@
+---
+// Panel - Cobranza
+// ------------
+// Lista de trabajo para quien llama y visita. Se ordena por antigüedad del
+// atraso porque una cuota de 90 días necesita atención antes que una de 5.
+
+export const prerender = false
+
+import LayoutAdmin from '../../layouts/LayoutAdmin.astro'
+import { pesos, pesosCortos, fecha } from '../../lib/formato'
+
+const { supabase } = Astro.locals
+const params = Astro.url.searchParams
+
+let mensaje: string | null = null
+
+if (Astro.request.method === 'POST') {
+	const { data, error } = await supabase.rpc('actualizar_mora', {})
+	const resultado = Array.isArray(data) ? data[0] : null
+
+	mensaje = error
+		? `No se pudo recalcular: ${error.message}`
+		: `Mora recalculada: ${resultado?.creditos_afectados ?? 0} créditos revisados, ${resultado?.cuotas_vencidas ?? 0} cuotas vencidas.`
+}
+
+// Tramos de antigüedad estándar en cartera de crédito popular.
+const tramo = params.get('tramo') ?? 'vencidas'
+
+let consulta = supabase.from('v_cobranza').select('*')
+
+if (tramo === 'por_vencer') {
+	const en7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+	consulta = consulta
+		.gte('fecha_vencimiento', new Date().toISOString().slice(0, 10))
+		.lte('fecha_vencimiento', en7)
+		.order('fecha_vencimiento')
+} else if (tramo === '1_30') {
+	consulta = consulta.gte('dias_vencida', 1).lte('dias_vencida', 30).order('dias_vencida', { ascending: false })
+} else if (tramo === '31_90') {
+	consulta = consulta.gte('dias_vencida', 31).lte('dias_vencida', 90).order('dias_vencida', { ascending: false })
+} else if (tramo === '90_mas') {
+	consulta = consulta.gt('dias_vencida', 90).order('dias_vencida', { ascending: false })
+} else {
+	consulta = consulta.gt('dias_vencida', 0).order('dias_vencida', { ascending: false })
+}
+
+const { data: filas } = await consulta.limit(300)
+
+// Resumen por tramo, calculado sobre todas las cuotas vencidas.
+const { data: todasVencidas } = await supabase
+	.from('v_cobranza')
+	.select('dias_vencida, total_pendiente')
+	.gt('dias_vencida', 0)
+
+const tramos = [
+	{ id: '1_30', etiqueta: '1 a 30 días', min: 1, max: 30 },
+	{ id: '31_90', etiqueta: '31 a 90 días', min: 31, max: 90 },
+	{ id: '90_mas', etiqueta: 'Más de 90 días', min: 91, max: 99999 }
+].map((t) => {
+	const en = (todasVencidas ?? []).filter((f) => f.dias_vencida >= t.min && f.dias_vencida <= t.max)
+	return { ...t, cuotas: en.length, monto: en.reduce((s, f) => s + Number(f.total_pendiente), 0) }
+})
+
+const totalPendiente = (filas ?? []).reduce((s, f) => s + Number(f.total_pendiente), 0)
+
+const FILTROS = [
+	{ valor: 'por_vencer', etiqueta: 'Por vencer (7 días)' },
+	{ valor: 'vencidas', etiqueta: 'Todas las vencidas' },
+	{ valor: '1_30', etiqueta: '1-30 días' },
+	{ valor: '31_90', etiqueta: '31-90 días' },
+	{ valor: '90_mas', etiqueta: '+90 días' }
+]
+---
+
+<LayoutAdmin title="Cobranza | Panel Impulsa" activo="cobranza">
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+		<div>
+			<h1 class="h2 mb-1">Cobranza</h1>
+			<p class="mb-0 text-sm text-neutral-500 dark:text-neutral-400">
+				{filas?.length ?? 0} cuota(s) · {pesosCortos(totalPendiente)} por recuperar
+			</p>
+		</div>
+		<form method="POST">
+			<button type="submit" class="btn btn--contorno">Recalcular mora</button>
+		</form>
+	</div>
+
+	{
+		mensaje && (
+			<div class="aviso aviso--info" role="status">
+				<p>{mensaje}</p>
+			</div>
+		)
+	}
+
+	{/* Antigüedad de saldos */}
+	<section class="mb-6 grid gap-4 sm:grid-cols-3">
+		{
+			tramos.map((t) => (
+				<a href={`?tramo=${t.id}`} class="panel block no-underline">
+					<p
+						class:list={[
+							'kpi__valor',
+							t.id === '90_mas' && t.cuotas > 0 ? 'text-red-600 dark:text-red-400' : ''
+						]}
+					>
+						{pesosCortos(t.monto)}
+					</p>
+					<p class="kpi__etiqueta">{t.etiqueta}</p>
+					<p class="mt-2 mb-0 text-xs text-neutral-500 dark:text-neutral-400">
+						{t.cuotas} cuota(s)
+					</p>
+				</a>
+			))
+		}
+	</section>
+
+	<div class="panel mb-6 flex flex-wrap gap-1.5">
+		{
+			FILTROS.map((f) => (
+				<a
+					href={`?tramo=${f.valor}`}
+					class:list={[
+						'btn btn--sm no-underline!',
+						tramo === f.valor ? 'btn--primario' : 'btn--contorno'
+					]}
+				>
+					{f.etiqueta}
+				</a>
+			))
+		}
+	</div>
+
+	<div class="panel">
+		{
+			filas && filas.length > 0 ? (
+				<div class="tabla-scroll">
+					<table class="tabla-datos">
+						<thead>
+							<tr>
+								<th>Socio</th>
+								<th>Teléfono</th>
+								<th>Crédito</th>
+								<th>Cuota</th>
+								<th>Vence</th>
+								<th>Atraso</th>
+								<th class="num">Capital</th>
+								<th class="num">Interés</th>
+								<th class="num">Moratorio</th>
+								<th class="num">Total</th>
+								<th />
+							</tr>
+						</thead>
+						<tbody>
+							{filas.map((f) => (
+								<tr>
+									<td>
+										<a href={`/admin/socios/${f.socio_id}`} class="font-medium">
+											{f.socio_nombre}
+										</a>
+										<span class="block text-xs text-neutral-500">
+											{f.numero_socio ?? '—'} · {f.sucursal_nombre ?? 'Sin sucursal'}
+										</span>
+									</td>
+									<td>
+										{f.socio_telefono ? (
+											<a href={`tel:${f.socio_telefono.replace(/\D/g, '')}`} class="text-xs">
+												{f.socio_telefono}
+											</a>
+										) : (
+											<span class="text-xs text-neutral-500">Sin teléfono</span>
+										)}
+									</td>
+									<td class="text-xs">{f.credito_folio}</td>
+									<td>#{f.numero_cuota}</td>
+									<td class="text-xs">{fecha(f.fecha_vencimiento)}</td>
+									<td>
+										{f.dias_vencida > 0 ? (
+											<span
+												class:list={[
+													'estado',
+													f.dias_vencida > 90 ? 'estado--vencido' : 'estado--atrasado'
+												]}
+											>
+												{f.dias_vencida} d
+											</span>
+										) : (
+											<span class="estado estado--pendiente">
+												en {Math.abs(f.dias_vencida)} d
+											</span>
+										)}
+									</td>
+									<td class="num">{pesos(f.capital_pendiente)}</td>
+									<td class="num">{pesos(f.interes_pendiente)}</td>
+									<td class="num">{pesos(f.moratorio_pendiente)}</td>
+									<td class="num font-medium">{pesos(f.total_pendiente)}</td>
+									<td>
+										<a href={`/admin/creditos/${f.credito_id}`}>Cobrar</a>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<p class="mb-0 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+					No hay cuotas en este tramo.
+				</p>
+			)
+		}
+	</div>
+
+	<p class="small mt-4">
+		La mora se recalcula al ejecutar la función <code>actualizar_mora()</code>. Conviene programarla
+		una vez al día; consulta <code>docs/07-motor-de-credito.md</code>.
+	</p>
+</LayoutAdmin>
