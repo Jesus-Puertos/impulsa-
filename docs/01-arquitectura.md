@@ -15,7 +15,7 @@ Navegador
            /admin/**
    │
    ▼
-Astro 5 + adaptador Netlify
+Astro 5 + adaptador Vercel
    │  middleware.ts  ── resuelve sesión y bloquea rutas privadas
    │  src/pages/api  ── endpoints propios (JSON y multipart)
    ▼

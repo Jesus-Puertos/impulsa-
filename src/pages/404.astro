@@ -1,41 +1,126 @@
 ---
-// 404 Page
+// Página no encontrada (404)
 // ------------
-// Description: The 404 page is a page that displays when a page is not found.
+// Se pre-renderiza: el hosting la sirve para cualquier ruta que no exista.
+// No debe depender de sesión ni de base de datos.
 
-// Components
-// - Layout
 import Layout from '../layouts/Layout.astro'
-// - Blocks
-import BasicHeroSplitImageCTA from '../components/blocks/hero/BasicHeroSplitImageCTA.astro'
+import Section from '../components/ui/Section.astro'
+import Row from '../components/ui/Row.astro'
+import Col from '../components/ui/Col.astro'
+import Button from '../components/ui/Button.astro'
+import { Icon } from 'astro-icon/components'
 
-// Content
-// - Images
-import image from '../assets/404.webp'
-// - SEO
-const SEO = {
-	title: 'Oops! Empty office, empty page - Page Not Found',
-	description:
-		'The page you’re looking for isn’t here. Try going back to the homepage or browsing our sections.'
-}
-// - Hero data
-const heroData = {
-	title: 'Oops! Empty office, empty page',
-	subtitle: '404 page not found',
-	text: 'The page you’re looking for isn’t here. Try going back to the homepage or browsing our sections.',
-	image: image,
-	buttonText: 'Back to Homepage',
-	buttonLink: '/'
-}
+const ATAJOS = [
+	{
+		titulo: 'Créditos',
+		texto: 'Conoce los productos de crédito y sus condiciones.',
+		link: '/creditos',
+		icono: 'credit-card'
+	},
+	{
+		titulo: 'Simulador',
+		texto: 'Calcula tu pago y revisa la tabla de amortización.',
+		link: '/simulador',
+		icono: 'chart-bar'
+	},
+	{
+		titulo: 'Ahorro e inversión',
+		texto: 'Opciones para hacer crecer tu dinero en la cooperativa.',
+		link: '/ahorro',
+		icono: 'trending-up'
+	},
+	{
+		titulo: 'Sucursales',
+		texto: 'Ubica la sucursal más cercana y sus horarios.',
+		link: '/sucursales',
+		icono: 'globe-alt'
+	},
+	{
+		titulo: 'Preguntas frecuentes',
+		texto: 'Respuestas a las dudas más comunes de nuestros socios.',
+		link: '/preguntas-frecuentes',
+		icono: 'lifebuoy'
+	},
+	{
+		titulo: 'Portal del socio',
+		texto: 'Entra a tu cuenta para ver tus créditos y solicitudes.',
+		link: '/acceso',
+		icono: 'user'
+	}
+]
 ---
 
-<Layout title={SEO.title} description={SEO.description}>
-	<BasicHeroSplitImageCTA
-		subtitle={heroData.subtitle}
-		title={heroData.title}
-		text={heroData.text}
-		image={heroData.image}
-		buttonText={heroData.buttonText}
-		buttonLink={heroData.buttonLink}
-	/>
+<Layout
+	title="Página no encontrada | Cooperativa Impulsa"
+	description="La página que buscas no existe o cambió de dirección. Vuelve al inicio o elige una de nuestras secciones."
+	noindex={true}
+>
+	<Section spacerTop={false} spacerBottom={false} decorationBorder="bottom">
+		<Row classes="gap-y-0!">
+			<Col span="7" classes="py-16 lg:py-24">
+				<span class="h5">Error 404</span>
+				<h1>No encontramos esta página</h1>
+				<p class="text-lead">
+					Puede que el enlace esté incompleto, que la dirección tenga un error o que la página
+					haya cambiado de lugar. Tu información y tus trámites no se ven afectados.
+				</p>
+				<div class="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-8">
+					<Button link="/" classes="w-full sm:w-auto">Volver al inicio</Button>
+					<Button link="/contact" style="link">
+						Contactar a la cooperativa
+						<Icon name="long-arrow-right" class="size-5" />
+					</Button>
+				</div>
+			</Col>
+			<Col span="5" classes="error-codigo">
+				<span class="error-codigo__numero" aria-hidden="true">404</span>
+			</Col>
+		</Row>
+	</Section>
+
+	<Section decorationBorder="bottom">
+		<Row classes="pt-16">
+			<Col span="8" style="transparent">
+				<span class="h5">Quizá buscabas</span>
+				<h2>Las secciones más visitadas</h2>
+			</Col>
+		</Row>
+
+		<Row classes="pb-16" style="transparent" decorationBorder="none">
+			{
+				ATAJOS.map((a) => (
+					<Col span="4" spanTablet="6" classes="border border-neutral-200 dark:border-neutral-800">
+						<a href={a.link} class="atajo">
+							<Icon name={a.icono} class="atajo__icono" />
+							<h3 class="atajo__titulo">{a.titulo}</h3>
+							<p class="atajo__texto">{a.texto}</p>
+						</a>
+					</Col>
+				))
+			}
+		</Row>
+	</Section>
 </Layout>
+
+<style>
+	@reference '../styles/global.css';
+	:global(.error-codigo) {
+		@apply hidden items-center justify-center overflow-hidden bg-neutral-50! bg-[url('/bgs/dot-gray-light.svg')] bg-size-[18px] bg-fixed lg:flex dark:bg-neutral-900! dark:bg-[url('/bgs/dot-gray-dark.svg')];
+	}
+	.error-codigo__numero {
+		@apply font-display text-primary-500 text-[11rem] leading-none tracking-tight select-none xl:text-[13rem];
+	}
+	.atajo {
+		@apply flex h-full flex-col p-6 no-underline transition duration-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 dark:hover:bg-neutral-900;
+	}
+	.atajo__icono {
+		@apply text-primary-500 mb-4 size-6;
+	}
+	.atajo__titulo {
+		@apply mb-2 text-lg;
+	}
+	.atajo__texto {
+		@apply mb-0 text-sm text-neutral-500 dark:text-neutral-400;
+	}
+</style>

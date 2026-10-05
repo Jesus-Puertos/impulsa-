@@ -1,8 +1,12 @@
 # 09 · Despliegue
 
-El proyecto está configurado con el adaptador **Netlify**
-(`astro.config.mjs`). Abajo está también el cambio para Vercel, que requiere
-tres líneas.
+El proyecto está configurado con el adaptador **Vercel**
+(`astro.config.mjs`), que es donde está publicado. Para Netlify hay que cambiar
+el adaptador por `@astrojs/netlify` (ya instalado).
+
+> El adaptador **debe coincidir con el hosting**. Casi todas las páginas se
+> renderizan en el servidor; con el adaptador equivocado el hosting solo sirve
+> las estáticas y el resto responde con la página 404.
 
 ## Antes de publicar
 
@@ -11,7 +15,7 @@ tres líneas.
 - [ ] Confirmación de correo **activada** en Supabase Auth
 - [ ] `Site URL` y `Redirect URLs` apuntando al dominio real
 - [ ] Datos institucionales capturados en `/admin/configuracion`
-- [ ] Isotipo oficial reemplazado (ver [05](05-identidad-corporativa.md))
+- [x] Logo oficial colocado (ver [05](05-identidad-corporativa.md))
 - [ ] Aviso de privacidad y términos revisados por jurídico
 - [ ] `site` actualizado en `astro.config.mjs` con el dominio real
 - [ ] Copias de seguridad automáticas activadas en Supabase
@@ -61,11 +65,11 @@ El adaptador genera automáticamente la función SSR y el archivo `_redirects`.
 
 ## Vercel
 
-El paquete `@astrojs/vercel` ya está instalado. Cambia el adaptador:
+Es el adaptador activo en `astro.config.mjs`:
 
 ```js
 // astro.config.mjs
-import vercel from '@astrojs/vercel'   // en lugar de netlify
+import vercel from '@astrojs/vercel'
 
 export default defineConfig({
   // …

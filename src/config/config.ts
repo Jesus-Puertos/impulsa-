@@ -27,8 +27,8 @@ export const configData: Config = {
 		'Cooperativa Impulsa promueve el cooperativismo y la educación financiera con crédito responsable, inversiones éticas y ahorro accesible para fortalecer a las comunidades rurales y a nuestros socios.',
 	ogImage: '/og.jpg',
 	logo: {
-		src: '/logo-light.svg',
-		srcDark: '/logo-dark.svg',
+		src: '/logo-light.png',
+		srcDark: '/logo-dark.png',
 		alt: 'Cooperativa Impulsa'
 	},
 	canonical: true,

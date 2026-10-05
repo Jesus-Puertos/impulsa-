@@ -14,7 +14,6 @@ import NavigationBar from '../components/ui/NavigationBar.astro'
 import Main from '../components/ui/Main.astro'
 import Footer from '../components/ui/Footer.astro'
 import Header from '../components/blocks/head/Header.astro'
-import NotificationToast from '../components/ui/NotificationToast.astro'
 // Scripts
 import Scripts from '../components/scripts/ThemeScripts.astro'
 import GoogleTagManager from '../components/scripts/googleTagManagerBody.astro'
@@ -63,7 +62,6 @@ const {
 			<slot />
 		</Main>
 		{footer !== 'none' && <Footer />}
-		<NotificationToast />
 		<Scripts />
 	</body>
 </html>

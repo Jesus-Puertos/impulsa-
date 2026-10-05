@@ -60,7 +60,7 @@ Las migraciones de base de datos están en
 
 ## Antes de operar con dinero real
 
-1. Reemplaza el isotipo provisional por el oficial de la cooperativa
+1. Si existe el logo en vectores, regenera con él las imágenes de `public/marca/`
 2. Captura las condiciones de producto autorizadas por el Consejo
 3. Somete el aviso de privacidad y los términos a revisión jurídica
 4. Activa la confirmación de correo en Supabase Auth

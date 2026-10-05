@@ -132,39 +132,41 @@ y logotipo:
 <MarcaImpulsa enlace={null} />                  <!-- sin envolver en <a> -->
 ```
 
-El isotipo es SVG **inline y puramente geométrico**: tres barras ascendentes en
-morado, oro y verde corporativos que representan crecimiento. Al ser geométrico
-no depende de ninguna fuente y se ve idéntico en cualquier equipo.
+El isotipo y el logotipo son los **archivos oficiales del manual** (1.1.1 y
+1.1.2), extraídos del catálogo en PDF con su transparencia original. El
+logotipo es imagen y no texto porque sus tipografías (Rouben Regular y
+Gemanticus Bold) no existen como fuente web; el nombre accesible lo aporta el
+`aria-label` del componente.
 
-El logotipo se compone con **texto HTML real**, no con `<text>` dentro del SVG.
-Así usa las fuentes web cargadas, sigue siendo seleccionable, lo lee un lector
-de pantalla y escala sin perder nitidez.
+En modo oscuro el isotipo se mantiene a color y el nombre cambia a la versión
+en blanco, como indica la norma 1.2.2 para fondos negros.
 
-### ⚠️ El isotipo es provisional
+### Archivos de la marca
 
-El manual describe la marca gráfica y el Impulsaurio, pero el proyecto no
-incluyó los archivos vectoriales originales. **Reemplaza el isotipo por el
-oficial antes de salir a producción.**
+| Archivo                                                              | Uso                                        |
+| -------------------------------------------------------------------- | ------------------------------------------ |
+| [`../public/marca/isotipo.webp`](../public/marca/isotipo.webp)                   | Isotipo a color (navegación, pie, portal)  |
+| [`../public/marca/logotipo-negro.webp`](../public/marca/logotipo-negro.webp)     | Nombre sobre fondo claro                   |
+| [`../public/marca/logotipo-blanco.webp`](../public/marca/logotipo-blanco.webp)   | Nombre sobre fondo oscuro                  |
+| [`../public/favicon.png`](../public/favicon.png)                                 | Icono de pestaña                           |
+| [`../public/apple-touch-icon.png`](../public/apple-touch-icon.png)               | Icono al guardar el sitio en el teléfono   |
+| [`../public/logo-light.png`](../public/logo-light.png)                           | Marca completa, fondo claro (metadatos)    |
+| [`../public/logo-dark.png`](../public/logo-dark.png)                             | Marca completa, fondo oscuro (metadatos)   |
+| [`../public/og.jpg`](../public/og.jpg)                                           | Imagen para redes sociales                 |
 
-Archivos a sustituir:
+Son imágenes de mapa de bits porque el catálogo no trae la marca en vectores.
+Si la cooperativa consigue el archivo vectorial original (SVG, AI o PDF de
+diseño), conviene regenerarlas a partir de él.
 
-| Archivo                                                                            | Uso                                  |
-| ---------------------------------------------------------------------------------- | ------------------------------------ |
-| [`../public/favicon.svg`](../public/favicon.svg)                                    | Icono de pestaña                     |
-| [`../public/logo-light.svg`](../public/logo-light.svg)                              | Metadatos, fondo claro               |
-| [`../public/logo-dark.svg`](../public/logo-dark.svg)                                | Metadatos, fondo oscuro              |
-| `<svg>` dentro de [`MarcaImpulsa.astro`](../src/components/ui/MarcaImpulsa.astro)   | Navegación, pie, portal y panel      |
-| [`../public/og.jpg`](../public/og.jpg)                                              | Imagen para redes sociales           |
-
-Al hacerlo, respeta la zona de protección y el tamaño mínimo (1.2.1) y usa la
-versión en positivo salvo que el fondo obligue a la negativa (1.1.2).
+Al sustituirlas, respeta la zona de protección y el tamaño mínimo (1.2.1) y usa
+la versión en positivo salvo que el fondo obligue a la negativa (1.1.2).
 
 ### Normas de uso que el código ya respeta
 
-- **1.2.2** — Sobre fondo morado corporativo, la marca va en blanco.
-  `MarcaImpulsa` cambia los rellenos en modo oscuro.
-- **1.2.5** — No se alteran las proporciones: el `viewBox` es fijo y el escalado
-  es uniforme.
+- **1.2.2** — Sobre fondo negro, el isotipo va a color y el nombre en blanco.
+  `MarcaImpulsa` intercambia el logotipo en modo oscuro.
+- **1.2.5** — No se alteran las proporciones ni los colores: las imágenes se
+  escalan de forma uniforme (`w-auto`).
 - **1.2.4** — El isotipo nunca se coloca sobre fondos que comprometan su
   visibilidad; los layouts usan blanco, `neutral-50` o `neutral-950`.
 

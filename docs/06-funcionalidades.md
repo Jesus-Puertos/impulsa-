@@ -224,7 +224,8 @@ Cosas que quedaron fuera y conviene resolver antes de operar con dinero real.
 
 ### Requieren una decisión de la cooperativa
 
-1. **Isotipo oficial.** El actual es provisional. Ver
+1. **Marca en vectores.** El sitio ya usa el logo oficial, pero como imagen
+   tomada del catálogo. Si existe el archivo vectorial, conviene sustituirla. Ver
    [05 · Identidad corporativa](05-identidad-corporativa.md).
 2. **Condiciones reales de los productos.** Las del seed son plausibles pero
    inventadas. Deben capturarse las autorizadas por el Consejo.
